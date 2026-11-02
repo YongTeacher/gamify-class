@@ -41,6 +41,14 @@ window.GENESIS_ASSETS = [
     prompt: '가로 16:9 ZEP용 2D 야외 게임 맵. 화면 아래쪽과 중앙에는 위에서 비스듬히 내려다본 거대한 반원형 달 표면이 넓게 펼쳐지고, 왼쪽 상단 우주에는 푸르게 빛나는 지구가 보인다. 실제 ZEP 달 맵처럼 회갈색의 입체적인 달 지형, 선명하지만 일러스트풍인 분화구와 암석, 부드러운 명암, 은은한 청록색 우주광, 넓은 캐릭터 이동 공간. 1인칭 시점·복도·출구 프레임·인물·우주인·우주선·차량·오브젝트·UI·문자·로고 없음.'
   },
   {
+    id: 'GEN-MAP-021', slug: 'deep-space-background', category: 'map', categoryLabel: '맵 세트',
+    title: '청록빛 심우주 배경', subtitle: '별과 성운만 담은 순수한 ZEP용 우주 바탕',
+    thumbnail: 'assets/genesis/thumbs/genesis-deep-space-background.jpg', background: 'assets/genesis/genesis-deep-space-background.png',
+    editorUrl: 'index.html?genesis=deep-space-background', size: '1672 × 941', layers: '아랫배경 1장', tags: ['우주 배경', '별빛', '청록 성운', '16:9', '오브젝트 없음'],
+    description: '행성이나 지형 없이 짙은 남청색 우주, 청록빛 성운과 별만 담은 넓은 바탕 배경입니다. 화면 중앙과 아래쪽을 비교적 차분하게 구성해 ZEP 캐릭터와 우주기지 오브젝트를 자유롭게 배치할 수 있습니다.',
+    prompt: '가로 16:9 ZEP용 2D 우주 게임 배경. 짙은 남청색과 검정의 별밭, 부드러운 청록·푸른 성운, 은은한 우주 먼지와 크기가 다양한 작은 별. 중앙과 아래쪽은 캐릭터와 오브젝트를 올리기 좋게 차분하게 유지한다. 행성·지구·달·우주선·우주인·로봇·건물·지형·발판·인물·텍스트·로고·UI 없음.'
+  },
+  {
     id: 'GEN-OBJ-001', slug: 'space-shuttle', category: 'object', categoryLabel: '오브젝트',
     title: '탐사용 우주왕복선', subtitle: '달 표면 배치용 회색 소형 왕복선',
     thumbnail: 'assets/genesis/objects/space-shuttle.png', background: 'assets/genesis/objects/space-shuttle.png',

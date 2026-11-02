@@ -446,7 +446,8 @@
     const openings={
       'opening-corridor':{src:'assets/genesis/genesis-opening-corridor-zep-scale.png',name:'빛을 향한 복도 (ZEP 스케일)'},
       'dark-light-passage':{src:'assets/genesis/genesis-dark-light-passage.png',name:'암흑에서 빛으로'},
-      'moon-surface-earth':{src:'assets/genesis/genesis-moon-surface-earth.png',name:'달 표면·지구 전망'}
+      'moon-surface-earth':{src:'assets/genesis/genesis-moon-surface-earth.png',name:'달 표면·지구 전망'},
+      'deep-space-background':{src:'assets/genesis/genesis-deep-space-background.png',name:'청록빛 심우주 배경'}
     },opening=openings[kind];
     if(!opening)return;
     if(state.hasContent&&!confirm(`프로젝트 제네시스의 '${opening.name}' 배경으로 새 맵을 시작할까요?\n현재 맵은 실행 취소로 복구할 수 있습니다.`))return;
