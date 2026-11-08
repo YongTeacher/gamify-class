@@ -11,12 +11,13 @@ const LAB_COLUMNS = {
 };
 function setupLifeScienceLab() {
   const props = PropertiesService.getScriptProperties();
-  const sheet = SpreadsheetApp.getActiveSpreadsheet();
+  const bootstrap = typeof labBootstrapConfig_ === 'function' ? labBootstrapConfig_() : null;
+  const sheet = SpreadsheetApp.getActiveSpreadsheet() || (bootstrap ? SpreadsheetApp.openById(bootstrap.spreadsheetId) : null);
   if (!sheet) throw new Error('새 연구소 스프레드시트에 연결된 Apps Script에서 실행하세요.');
   if (props.getProperty('LAB_SPREADSHEET_ID') && props.getProperty('LAB_SPREADSHEET_ID') !== sheet.getId()) throw new Error('다른 저장소로 변경할 수 없습니다.');
   if (sheet.getName() !== 'Gamify Class - 생명과학 탐구 연구소') throw new Error('연구소 전용 스프레드시트 이름을 확인하세요. 생태월드 시트는 사용하지 않습니다.');
   props.setProperty('LAB_SPREADSHEET_ID', sheet.getId());
-  if (!props.getProperty('LAB_WEBHOOK_SECRET')) props.setProperty('LAB_WEBHOOK_SECRET', Utilities.getUuid() + Utilities.getUuid());
+  if (!props.getProperty('LAB_WEBHOOK_SECRET')) props.setProperty('LAB_WEBHOOK_SECRET', bootstrap?.secret || Utilities.getUuid() + Utilities.getUuid());
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
@@ -47,12 +48,20 @@ function doPost(e) {
     const envelope = JSON.parse(e.postData.contents);
     if (typeof envelope.body !== 'string' || envelope.body.length > 150000) throw new Error('Invalid request');
     const props = PropertiesService.getScriptProperties();
-    const secret = props.getProperty('LAB_WEBHOOK_SECRET');
+    const bootstrap = typeof labBootstrapConfig_ === 'function' ? labBootstrapConfig_() : null;
+    const secret = props.getProperty('LAB_WEBHOOK_SECRET') || bootstrap?.secret;
     if (!secret) throw new Error('Not configured');
     const signature = Utilities.computeHmacSha256Signature(envelope.body, secret).map((v) => ((v + 256) % 256).toString(16).padStart(2, '0')).join('');
     if (!constantEqual_(signature, envelope.signature)) return labJson_({ ok: false, status: 403, error: '잘못된 서버 서명' });
     const req = JSON.parse(envelope.body);
     if (Math.abs(Date.now() - req.timestamp) > 60000 || !/^[a-f0-9]{32}$/.test(req.nonce)) throw new Error('Expired request');
+    // First deployment may inject a private initializer, never a public endpoint.
+    // Initialization is allowed only after a valid server signature.
+    if (!props.getProperty('LAB_WEBHOOK_SECRET') && bootstrap) {
+      props.setProperty('LAB_WEBHOOK_SECRET', bootstrap.secret);
+      props.setProperty('LAB_SPREADSHEET_ID', bootstrap.spreadsheetId);
+      setupLifeScienceLab();
+    }
     if (!lock.tryLock(20000)) return labJson_({ ok: false, status: 503, error: '저장 요청이 많습니다. 잠시 후 재시도하세요.' });
     const cache = CacheService.getScriptCache();
     if (cache.get(req.nonce)) throw new Error('Replayed request');

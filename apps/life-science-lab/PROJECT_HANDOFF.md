@@ -26,7 +26,7 @@ https://docs.google.com/spreadsheets/d/10YZYoEJhYknsCvi00dLonO2Qoo6p31RHP_59AOk3
 ## 완료한 검증
 
 - JavaScript 문법 검사 통과.
-- 권한·저장 순서·중복·제출 잠금·공개 분리·Apps Script 어댑터 테스트 13개 통과.
+- 권한·저장 순서·중복·제출 잠금·공개 분리·Apps Script 어댑터 테스트 14개 통과.
 - Microsoft Edge 브라우저에서 가상 계정으로 전체 작성·복원·제출·보완·재제출·승인·공개·취소 통과.
 - CSV / XLSX / XLS 명단 등록, 새 탐구 항목 생성 통과.
 - 390px 모바일 화면 가로 넘침 없음. 브라우저 JavaScript 오류 없음.
@@ -39,18 +39,25 @@ https://docs.google.com/spreadsheets/d/10YZYoEJhYknsCvi00dLonO2Qoo6p31RHP_59AOk3
 
 ## 실제 수업 사용 전에 남은 것
 
-1. 새 시트에서 연결된 Apps Script 프로젝트를 열고 Code.gs, Domain.gs, Seed.gs를 추가.
-2. setupLifeScienceLab 실행, Google 권한 승인, 웹 앱으로 배포.
-3. Gamify Class Pages에 LAB_SHEETS_URL, LAB_SHEETS_SECRET,
-   LAB_SESSION_SECRET, LAB_ADMIN_HASH를 암호화된 비밀 변수로 설정.
-4. 배포 후 교사 로그인부터 실제 Sheets 왕복 저장을 확인.
-5. 실제 학생 명단 등록 및 개별 접속 코드 전달.
+1. 소유자가 Apps Script 편집기에서 setupLifeScienceLab을 처음 실행하여 스프레드시트 접근을 승인.
+2. 실제 교사 로그인과 Sheets 왕복 저장을 확인.
+3. 실제 학생 명단 등록 및 개별 접속 코드 전달.
 
 자세한 절차와 환경 변수는 README.md에 있습니다.
-독립 Worker 운영 화면 배포와 관리자 해시·세션키 설정은 완료했습니다.
-Google 계정 승인 전이므로 Apps Script 생성·배포 및 Sheets 연결은 대기 중입니다.
+커밋 0949ee8을 main에 푸시했고 메인 Pages 자동 배포와 독립 Worker 운영 배포를 완료했습니다.
+Google 로그인과 Apps Script API 설정이 완료되어, 전용 스크립트 생성·코드 업로드·버전 2 배포까지 했습니다.
+운영 Worker에는 LAB_ADMIN_HASH, LAB_SESSION_SECRET, LAB_SHEETS_URL, LAB_SHEETS_SECRET 4개를 설정했습니다.
+실제 요청은 Google에서 403 접근 거부가 반환되어 소유자의 최초 스크립트 실행 권한 확인을 기다리고 있습니다.
+
+전용 스크립트 편집기:
+https://script.google.com/d/1JT24XJVrDqh9tvvZuBou984bw6uT4gJ57wQDzn_O304MqAGKQE_F79Cg/edit
+
+전용 웹 앱 (버전 2):
+https://script.google.com/macros/s/AKfycbwrSvJKu6wSB7FTaJF2UIRevpx7bEQCi30KONHkZw1EtMfRTU0XQp1Qo-KvvAYma1_U/exec
 Google 로그인은 clasp를 사용하며 인증 파일은 .qa/clasp-auth.json으로 지정하고 Git에서 제외합니다.
-로그인 후 .qa/gas-project/에 준비된 코드로 새 시트에 연결된 스크립트를 생성합니다.
+.qa/gas-project/에는 비공개 연결키를 포함한 Bootstrap.gs가 생성되므로 이 폴더를 Git에 추가하지 마세요.
+스크립트 공개 접근 설정은 API에서 ANYONE_ANONYMOUS / USER_DEPLOYING으로 확인했습니다.
+실제 서버 저장에 성공한 것으로 보고하지 않았습니다.
 최초 관리자 비밀번호는 .qa/operator-access.txt에만 보관합니다.
 
 ## 로컬 변경 보존 주의

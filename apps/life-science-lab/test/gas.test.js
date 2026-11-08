@@ -60,3 +60,15 @@ test('Apps Script에서 실패한 명단 검증은 일부 학생만 저장하지
   assert.equal(g.ctx.doPost(g.request('students.import',{students})).status,400);
   assert.equal(g.tabs.get('Students').data.length,1);
 });
+test('최초 수동 실행과 서버 초기화는 동일한 비공개 연결키를 유지',()=>{
+  const g=gas(),secret=g.props.get('LAB_WEBHOOK_SECRET');
+  g.ctx.labBootstrapConfig_=()=>({spreadsheetId:'separate-test-sheet',secret});
+  g.props.delete('LAB_WEBHOOK_SECRET');g.props.delete('LAB_SPREADSHEET_ID');
+  g.ctx.setupLifeScienceLab();
+  assert.equal(g.props.get('LAB_WEBHOOK_SECRET'),secret);
+  const req=g.request('bootstrap',{},{});
+  g.props.delete('LAB_WEBHOOK_SECRET');g.props.delete('LAB_SPREADSHEET_ID');
+  const result=g.ctx.doPost(req);
+  assert.equal(result.ok,true);assert.equal(result.result.assessments[0].fields.length,9);
+  assert.equal(g.props.get('LAB_WEBHOOK_SECRET'),secret);
+});
