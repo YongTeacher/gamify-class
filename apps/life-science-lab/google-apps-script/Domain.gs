@@ -18,7 +18,7 @@ globalThis.LabDomain = (() => {
     return s;
   }
   const cleanName = (v) => text(v,80).replace(/[（(]\s*(?:공동|위탁)\s*[)）]/g,'').trim();
-  const publicStudent = (s) => ({ id: s.id, year: s.year, grade: s.grade, classNo: s.classNo, number: s.number, name: cleanName(s.name), active: s.active, courseClasses:s.courseClasses || [] });
+  const publicStudent = (s) => ({ id: s.id, year: s.year, grade: s.grade, classNo: s.classNo, number: s.number, name: cleanName(s.name), active: s.active, courseClasses:s.courseClasses || [],pinRegistered:!!s.passwordHash });
   function assessment(db, id) {
     const a = find(db, 'Assessments', id);
     if (!a) fail(404, '탐구 활동을 찾을 수 없습니다.');
@@ -89,6 +89,13 @@ globalThis.LabDomain = (() => {
       return db.all('Students').find((s) => s.active && s.year === Number(p.year) && s.grade === Number(p.grade)
         && s.classNo === Number(p.classNo) && s.number === Number(p.number) && cleanName(s.name) === cleanName(p.name)) || null;
     }
+    if(action==='auth.claim') {
+      if(actor.role!=='system') fail(403,'인증 경로 오류');
+      const s=find(db,'Students',p.id);
+      if(!s || !s.active || s.passwordHash || s.authVersion!==p.authVersion) fail(409,'이미 PIN이 등록되었거나 명단 상태가 바뀌었습니다. 다시 확인하세요.');
+      if(!/^[a-f0-9]{32}:[a-f0-9]{64}$/.test(p.passwordHash || ''))fail(400,'PIN 형식 오류');
+      const next={...s,passwordHash:p.passwordHash,authVersion:s.authVersion+1};db.put('Students',next);return next;
+    }
     if (action === 'auth.rate') {
       if (actor.role !== 'system') fail(403, '인증 경로 오류');
       const id = 'rate:' + p.key, old = find(db, 'Settings', id);
@@ -138,11 +145,11 @@ globalThis.LabDomain = (() => {
         keys.add(key);
         const old = all.find((v) => [v.year,v.grade,v.classNo,v.number].join(':') === key);
         if (old && cleanName(old.name) !== s.name) fail(409, '이미 등록된 학번의 이름이 다릅니다. 기존 학생을 먼저 확인하세요.');
-        if (!old && !/^[a-f0-9]{32}:[a-f0-9]{64}$/.test(v.passwordHash || '')) fail(400, '접속 코드가 필요합니다.');
+        if (!old && v.passwordHash && !/^[a-f0-9]{32}:[a-f0-9]{64}$/.test(v.passwordHash)) fail(400, '접속 코드 형식을 확인하세요.');
         const courseClass = text(v.courseClass,80);
         const courseClasses = [...new Set([...(old?.courseClasses || []),...(courseClass ? [courseClass] : [])])];
         if (courseClasses.length>30) fail(400,'수업 반은 학생당 최대 30개입니다.');
-        return old ? {...old,name:s.name,courseClasses} : { ...s, courseClasses, id: uuid(), passwordHash: v.passwordHash, authVersion: 1, active: true, createdAt: now };
+        return old ? {...old,name:s.name,courseClasses} : { ...s, courseClasses, id: uuid(), passwordHash: v.passwordHash || null, authVersion: 1, active: true, createdAt: now };
       });
       rows.forEach((s) => db.put('Students', s)); return { count: rows.length };
     }
@@ -150,7 +157,7 @@ globalThis.LabDomain = (() => {
       const s = find(db, 'Students', p.id);
       if (!s) fail(404, '학생을 찾을 수 없습니다.');
       if (p.passwordHash && !/^[a-f0-9]{32}:[a-f0-9]{64}$/.test(p.passwordHash)) fail(400, '접속 코드 오류');
-      db.put('Students', { ...s, active: p.active === undefined ? s.active : !!p.active, passwordHash: p.passwordHash || s.passwordHash, authVersion: s.authVersion + 1 });
+      db.put('Students', { ...s, active: p.active === undefined ? s.active : !!p.active, passwordHash: p.allowPinSetup===true ? null : (p.passwordHash || s.passwordHash), authVersion: s.authVersion + 1 });
       return { ok: true };
     }
     if (action === 'assessments.list') return { assessments: db.all('Assessments').map((a) => assessment(db, a.id)) };

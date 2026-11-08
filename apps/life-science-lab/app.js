@@ -87,15 +87,34 @@ function activities() {
 }
 function login(role) {
   const teacher = role === 'teacher';
+  const first=!teacher && !!state.pinSetup;
   main.innerHTML = '<section class="login-layout"><div class="login-story"><p class="eyebrow">' + (teacher ? 'TEACHER STUDIO' : 'MY RESEARCH NOTE') + '</p><h1>' + (teacher ? '함께 자라는<br>탐구를 위해.' : '오늘의 질문을<br>기록해 볼까요?') + '</h1><p>' + (teacher ? '학생의 연구 과정을 살피고,<br>새로운 발견이 전시가 되도록 도와주세요.' : '선생님이 등록한 정보와<br>개별 접속 코드로 연구실에 입장하세요.') + '</p></div><form id="login-form" class="login-form stack"><h2>' + (teacher ? '교사 로그인' : '학생 로그인') + '</h2>' +
     (teacher ? '' : '<div class="form-grid"><label>학년도<input name="year" type="number" min="2020" max="2100" value="' + (state.groups.find((g) => g.id===state.groupId)?.year || new Date().getFullYear()) + '" required></label><label>학년<input name="grade" type="number" min="1" max="12" required></label><label>반<input name="classNo" type="number" min="1" max="100" required></label><label>번호<input name="number" type="number" min="1" max="999" required></label><label class="span-all">이름<input name="name" autocomplete="username" required></label></div>') +
     '<div><label for="login-password">' + (teacher ? '관리자 비밀번호' : '개인 접속 코드') + '</label><div class="password-field"><input id="login-password" name="password" type="password" minlength="8" maxlength="128" autocomplete="current-password" required><button type="button" data-action="toggle-password" aria-controls="login-password" aria-label="비밀번호 표시" aria-pressed="false">보기</button></div></div><button type="submit" class="primary" ' + (!state.configured ? 'disabled' : '') + '>연구소 입장 →</button><div id="login-error" role="alert"></div><p class="hint">' + (state.configured ? '학생 명단과 보고서는 이 연구소 안에서만 관리됩니다.' : '교사의 저장소 연결이 완료되면 로그인할 수 있습니다.') + '</p><a href="#' + (teacher ? 'lab' : 'teacher') + '" class="hint">' + (teacher ? '학생으로 참여하기 →' : '교사 관리실 →') + '</a></form></section>';
   $('#login-form').onsubmit = async (e) => {
     e.preventDefault(); const btn = e.target.querySelector('button[type="submit"]'); btn.disabled = true;
-    try { state.user = await api('login', { ...Object.fromEntries(new FormData(e.target)), role }); identity(); await route(); }
+    try { state.user = await api('login', { ...Object.fromEntries(new FormData(e.target)), role,setupPin:first }); state.pinSetup=false;identity(); await route(); }
     catch (err) { $('#login-error').textContent = err.message; btn.disabled = false; }
   };
   $('#login-form h2').insertAdjacentHTML('afterend','<p class="notice">'+esc(state.groups.find((g) => g.id===state.groupId)?.title || '기존 연구실')+'</p>');
+  if(!teacher){
+    const input=$('#login-password');input.minLength=4;
+    $('label[for="login-password"]').textContent=first?'처음 사용할 PIN (숫자 4자리)':'개인 PIN 또는 기존 접속 코드';
+    if(first){input.maxLength=4;input.pattern='[0-9]{4}';input.inputMode='numeric';input.autocomplete='new-password';
+      input.closest('div').parentElement.insertAdjacentHTML('afterend','<label>PIN 다시 입력<input name="pinConfirm" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="new-password" required></label><p class="hint">명단에 등록된 학생만 가능합니다. 교사 안내에 따라 본인 정보로 등록하세요. 첫 등록 후에는 같은 PIN으로 로그인합니다.</p>');
+    }
+    $('#login-form h2').textContent=first?'학생 PIN 처음 등록':'학생 로그인';
+    $('#login-form button[type="submit"]').textContent=first?'PIN 등록하고 입장':'연구소 입장 →';
+    $('#login-error').insertAdjacentHTML('afterend','<button type="button" data-action="pin-mode">'+(first?'기존 PIN으로 로그인':'처음 접속: PIN 등록')+'</button>');
+  }
+}
+function pinDialog(id) {
+  const student=state.students.find((s)=>s.id===id);
+  dialog('학생 PIN 관리 · '+student.name,'<form id="pin-form" class="stack"><p>'+esc(student.grade+'-'+student.classNo+'-'+student.number+' '+student.name)+'</p><label>새 PIN (숫자 4자리)<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="new-password" required></label><label>새 PIN 다시 입력<input name="confirm" type="password" inputmode="numeric" pattern="[0-9]{4}" minlength="4" maxlength="4" autocomplete="new-password" required></label><button class="primary">새 PIN 저장</button><button type="button" data-allow-pin="'+esc(id)+'">학생이 PIN을 다시 정하도록 초기화</button><p class="hint">기존 PIN은 조회할 수 없습니다. 변경·초기화하면 해당 학생의 기존 로그인은 만료되지만 보고서는 유지됩니다.</p></form>');
+  $('#pin-form').onsubmit=async(e)=>{e.preventDefault();const values=Object.fromEntries(new FormData(e.target)),button=e.submitter;
+    if(values.pin!==values.confirm){toast('두 PIN이 서로 다릅니다.');return;}
+    button.disabled=true;try{await api('student.update',{id,password:values.pin});$('#modal').close();toast('학생 PIN을 변경했습니다.');await students();}catch(err){toast(err.message);button.disabled=false;}
+  };
 }
 async function lab() {
   if (!state.user || state.user.role !== 'student') return login('student');
@@ -217,16 +236,16 @@ async function groups() {
 async function students() {
   state.students = (await api('students.list')).students;
   $('#admin-content').innerHTML = '<section class="panel"><h2>학생 명단 등록</h2><p class="hint">명단 머리글: 학년도, 학년, 반, 번호, 이름, 접속코드. 접속 코드는 8자 이상이며 학생에게 개별 전달하세요. 기존 학생은 중복 등록되지 않고 기존 코드가 유지됩니다.</p><div class="actions"><label>CSV / XLSX / XLS<input id="roster-file" type="file" accept=".csv,.xlsx,.xls" multiple></label><button data-action="roster-template">CSV 양식 다운로드</button></div><div id="roster-preview"></div><hr style="border:0;border-top:1px solid var(--line);margin:25px 0"><form id="student-form" class="form-grid">' +
-    [['year','학년도','number',(state.user.group?.year || new Date().getFullYear())],['grade','학년','number',''],['classNo','반','number',''],['number','번호','number',''],['name','이름','text',''],['courseClass','수업 반','text',''],['password','접속 코드','password','']].map(([id,label,type,value]) => '<label>' + label + '<input name="' + id + '" type="' + type + '" value="' + value + '" ' + (id==='password' ? 'minlength="8" maxlength="128"' : '') + ' '+(id==='courseClass'?'':'required')+'></label>').join('') +
+    [['year','학년도','number',(state.user.group?.year || new Date().getFullYear())],['grade','학년','number',''],['classNo','반','number',''],['number','번호','number',''],['name','이름','text',''],['courseClass','수업 반','text',''],['password','PIN/기존 코드 (비우면 학생이 처음 등록)','password','']].map(([id,label,type,value]) => '<label>' + label + '<input name="' + id + '" type="' + type + '" value="' + value + '" ' + (id==='password' ? 'minlength="4" maxlength="128"' : '') + ' '+(id==='courseClass'||id==='password'?'':'required')+'></label>').join('') +
     '<button class="primary span-all">학생 직접 등록</button></form></section><section class="panel"><h2>' + state.students.length + '명의 연구자</h2><div class="table-wrap"><table><thead><tr><th>학년도</th><th>학번</th><th>이름</th><th>수업 반</th><th>상태</th><th>관리</th></tr></thead><tbody>' +
-    state.students.map((s) => '<tr><td>' + s.year + '</td><td>' + s.grade + '-' + s.classNo + '-' + s.number + '</td><td>' + esc(s.name) + '</td><td>'+esc((s.courseClasses || []).join(', '))+'</td><td>' + (s.active ? '활성' : '비활성') + '</td><td><button data-reset-student="' + s.id + '">코드 재설정</button> <button data-toggle-student="' + s.id + '">' + (s.active ? '이용 중지' : '이용 허용') + '</button></td></tr>').join('') + '</tbody></table></div></section>';
+    state.students.map((s) => '<tr><td>' + s.year + '</td><td>' + s.grade + '-' + s.classNo + '-' + s.number + '</td><td>' + esc(s.name) + '</td><td>'+esc((s.courseClasses || []).join(', '))+'</td><td>' + (s.active ? (s.pinRegistered?'활성 · PIN/코드 등록됨':'활성 · PIN 미등록') : '비활성') + '</td><td><button data-reset-student="' + s.id + '">PIN 관리</button> <button data-toggle-student="' + s.id + '">' + (s.active ? '이용 중지' : '이용 허용') + '</button></td></tr>').join('') + '</tbody></table></div></section>';
   $('#student-form').onsubmit = async (e) => {
     e.preventDefault(); const btn = e.target.querySelector('button'); btn.disabled = true;
     try { await api('students.import', { students:[Object.fromEntries(new FormData(e.target))] }); toast('학생을 등록했습니다.'); await students(); }
     catch (err) { toast(err.message); btn.disabled = false; }
   };
   state.roster = null;
-  $('#roster-file').closest('.actions').insertAdjacentHTML('beforebegin', '<div class="form-grid"><label>기본 학년도<input id="roster-year" type="number" value="'+(state.user.group?.year || new Date().getFullYear())+'" min="2020" max="2100"></label><label>기본 학년<input id="roster-grade" type="number" min="1" max="12" placeholder="예: 2"></label><label>기본 반<input id="roster-class" type="number" min="1" max="100" placeholder="예: 1"></label><label>수업 반 (파일에서 자동 인식)<input id="roster-course" placeholder="예: 2-1"></label></div><p class="hint">나이스 명렬표는 번호·성명 열만 있어도 됩니다. 파일에 없는 학년도·학년·반을 지정하세요. 새 학생의 접속 코드는 자동 발급됩니다. 등록 전 접속 코드 명단을 다운로드해 안전하게 보관하고 학생에게 개별 전달하세요. 기존 학생의 코드와 자료는 유지됩니다.</p>');
+  $('#roster-file').closest('.actions').insertAdjacentHTML('beforebegin', '<div class="form-grid"><label>기본 학년도<input id="roster-year" type="number" value="'+(state.user.group?.year || new Date().getFullYear())+'" min="2020" max="2100"></label><label>기본 학년<input id="roster-grade" type="number" min="1" max="12" placeholder="예: 2"></label><label>기본 반<input id="roster-class" type="number" min="1" max="100" placeholder="예: 1"></label><label>수업 반 (파일에서 자동 인식)<input id="roster-course" placeholder="예: 2-1"></label></div><p class="hint">나이스 명렬표는 번호·성명 열만 있어도 됩니다. 파일에 없는 학년도·학년·반을 지정하세요. 새 학생은 첫 접속에서 숫자 4자리 PIN을 직접 등록합니다. 별도의 접속 코드 발급·전달은 필요 없습니다. 기존 학생의 코드와 자료는 유지됩니다.</p>');
   $('#admin-content .panel > .hint').textContent = '명렬표를 업로드하고 미리보기를 확인한 뒤 등록하세요. 기존 학생의 코드와 자료는 유지됩니다.';
   $('#roster-file').onchange = readRoster;
   const courseOptions=[...new Set(state.students.flatMap((s) => s.courseClasses || []))].sort();
@@ -252,8 +271,10 @@ async function readRoster(e) {
     const keys=new Set();
     for(const s of data){const key=[s.year,s.grade,s.classNo,s.number].join(':');if(keys.has(key))throw new Error('여러 파일에 같은 학번이 중복되어 있습니다. 파일을 확인하세요.');keys.add(key);}
     const prepared=prepareRoster(data,state.students);
+    const known=new Set(state.students.map((s)=>[s.year,s.grade,s.classNo,s.number].join(':')));
+    const newCount=data.filter((s)=>!known.has([s.year,s.grade,s.classNo,s.number].join(':'))).length;
     state.roster=prepared.students;state.rosterCodes=prepared.codes;state.rosterDownloaded=!prepared.codes.length;
-    $('#roster-preview').innerHTML='<div class="notice">'+files.length+'개 파일 · '+data.length+'명 확인 · 신규 '+prepared.codes.length+'명 / 기존 '+(data.length-prepared.codes.length)+'명 (기존 코드 유지)</div><div class="table-wrap"><table><thead><tr><th>학번</th><th>이름</th><th>수업 반</th></tr></thead><tbody>'+data.map((s) => '<tr><td>'+s.grade+'-'+s.classNo+'-'+s.number+'</td><td>'+esc(s.name)+'</td><td>'+esc(s.courseClass || '')+'</td></tr>').join('')+'</tbody></table></div><div class="actions">'+(prepared.codes.length?'<button data-action="roster-codes">신규 학생 접속 코드 명단 다운로드</button>':'')+'<button class="primary" data-action="import-roster" '+(prepared.codes.length?'disabled':'')+'>이 명단 등록</button></div><p class="hint">이름의 (공동)·(위탁)은 제외했습니다. 원래 학번과 수업 반은 별도로 저장합니다. 접속 코드 명단을 먼저 다운로드한 뒤 등록하세요. 원본 파일은 서버에 저장하지 않습니다.</p>';
+    $('#roster-preview').innerHTML='<div class="notice">'+files.length+'개 파일 · '+data.length+'명 확인 · 신규 '+newCount+'명 / 기존 '+(data.length-newCount)+'명 (기존 코드 유지)</div><div class="table-wrap"><table><thead><tr><th>학번</th><th>이름</th><th>수업 반</th></tr></thead><tbody>'+data.map((s) => '<tr><td>'+s.grade+'-'+s.classNo+'-'+s.number+'</td><td>'+esc(s.name)+'</td><td>'+esc(s.courseClass || '')+'</td></tr>').join('')+'</tbody></table></div><div class="actions">'+(prepared.codes.length?'<button data-action="roster-codes">신규 학생 접속 코드 명단 다운로드</button>':'')+'<button class="primary" data-action="import-roster" '+(prepared.codes.length?'disabled':'')+'>이 명단 등록</button></div><p class="hint">이름의 (공동)·(위탁)은 제외했습니다. 원래 학번과 수업 반은 별도로 저장합니다. 새 학생은 첫 접속에서 PIN 등록을 선택해 숫자 4자리를 정하세요. 코드가 직접 입력된 파일만 코드 명단을 먼저 다운로드하세요. 원본 파일은 서버에 저장하지 않습니다.</p>';
   }catch(err){toast(err.message);}
 }
 async function reports() {
@@ -354,12 +375,14 @@ document.addEventListener('click', async (e) => {
     if(b.dataset.editAssessment){assessmentForm(b.dataset.editAssessment);return;}
     if(b.dataset.deleteField!==undefined){state.editAssessment.fields.splice(Number(b.dataset.deleteField),1);renderFields();return;}
     if(b.dataset.moveField!==undefined){const i=Number(b.dataset.moveField),j=i+Number(b.dataset.direction),fs=state.editAssessment.fields;if(j>=0&&j<fs.length)[fs[i],fs[j]]=[fs[j],fs[i]];renderFields();return;}
-    if(b.dataset.resetStudent){const password=prompt('새 개별 접속 코드 (8자 이상, 학생에게 개별 전달)');if(password){await api('student.update',{id:b.dataset.resetStudent,password});toast('코드를 변경하고 기존 로그인을 만료시켰습니다.');}return;}
+    if(b.dataset.resetStudent){pinDialog(b.dataset.resetStudent);return;}
+    if(b.dataset.allowPin){if(!confirm('기존 PIN/접속 코드를 해제하고 학생이 새 PIN을 직접 등록하게 할까요? 보고서는 유지됩니다.'))return;b.disabled=true;await api('student.update',{id:b.dataset.allowPin,allowPinSetup:true});$('#modal').close();toast('처음 PIN 등록 화면에서 학생이 새 PIN을 정할 수 있습니다.');await students();return;}
     if(b.dataset.toggleStudent){const s=state.students.find((s)=>s.id===b.dataset.toggleStudent);await api('student.update',{id:s.id,active:!s.active});await students();return;}
     if(b.dataset.generate){b.disabled=true;await api('publication.generate',{id:b.dataset.generate});state.adminTab='publications';await admin();return;}
     if(b.dataset.editPublication){editPublication(b.dataset.editPublication);return;}
     if(b.dataset.hidePublication){const p=state.publications.find((p)=>p.id===b.dataset.hidePublication);await api('publication.hide',{id:p.id,version:p.version});await publications();return;}
     switch(b.dataset.action){
+      case 'pin-mode':{const info=Object.fromEntries(new FormData($('#login-form')));state.pinSetup=!state.pinSetup;login('student');for(const k of ['year','grade','classNo','number','name'])if($('#login-form [name="'+k+'"]'))$('#login-form [name="'+k+'"]').value=info[k] || '';break;}
       case 'toggle-password':{
         const input=$('#login-password'), visible=input.type==='password';
         input.type=visible?'text':'password';

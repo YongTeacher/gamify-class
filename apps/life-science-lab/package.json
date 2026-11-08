@@ -5,7 +5,7 @@
   "scripts": {
     "check": "node --check app.js && node --check roster.js && node --check server/api.js && node --check server/auth.js && node --check domain.js && node --check seed.js",
     "test": "node --test test/*.test.js",
-    "test:browser": "node test/browser.mjs && node test/groups-browser.mjs",
+    "test:browser": "node test/browser.mjs && node test/groups-browser.mjs && node test/pin-browser.mjs",
     "gas": "node scripts/build-gas.mjs",
     "build": "node scripts/build-worker.mjs",
     "password": "node scripts/password.mjs",

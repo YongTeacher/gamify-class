@@ -23,15 +23,16 @@ test('5자리 학번과 명시적 학급 열, 숫자 및 중복 검증',()=>{
   assert.throws(()=>parseRoster([['번호','성명'],['1번','가상1']],defaults),/번호/);
   assert.throws(()=>parseRoster([['번호','성명','번호','성명'],[1,'가상1',2,'가상2']],defaults),/여러 열/);
 });
-test('신규 코드 자동 발급, 기존 코드 보존, 다른 이름 충돌 차단',()=>{
+test('신규 학생은 PIN 미등록, 지정된 코드만 다운로드, 기존 코드 보존',()=>{
   const row={...defaults,number:1,name:'가상학생'};
-  const fresh=prepareRoster([row],[],()=> 'secure-test-code');
-  assert.equal(fresh.codes[0].password,'secure-test-code');
+  const fresh=prepareRoster([row],[]);
+  assert.equal(fresh.codes.length,0);assert.equal(fresh.students[0].password,'');
+  assert.equal(prepareRoster([{...row,password:'0123'}],[]).codes[0].password,'0123');
   const old=prepareRoster([{...row,password:'ignored-code'}],[row]);
   assert.equal(old.codes.length,0);assert.equal(old.students[0].password,'');
   assert.throws(()=>prepareRoster([row],[{...row,name:'다른가상학생'}]),/이름이 다릅니다/);
   assert.throws(()=>prepareRoster([{...row,password:'short'}],[]),/8~128/);
-  assert.match(prepareRoster([row],[]).codes[0].password,/^[a-f0-9]{12}$/);
+  assert.equal(prepareRoster([{...row,password:'secure-test-code'}],[]).codes[0].password,'secure-test-code');
 });
 test('다운로드 CSV는 수식 삽입과 따옴표를 이스케이프한다',()=>{
   const csv=rosterCSV([{...defaults,number:1,name:'=1+1',password:'a"b123456'}]);

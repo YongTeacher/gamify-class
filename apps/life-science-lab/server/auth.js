@@ -1,4 +1,5 @@
 const enc = new TextEncoder();
+export const validStudentSecret = (v) => typeof v==='string' && (/^\d{4}$/.test(v) || (v.length>=8 && v.length<=128));
 const hex = (bytes) => [...new Uint8Array(bytes)].map((n) => n.toString(16).padStart(2, '0')).join('');
 export const randomHex = (n = 16) => hex(crypto.getRandomValues(new Uint8Array(n)));
 export async function hmac(secret, text) {

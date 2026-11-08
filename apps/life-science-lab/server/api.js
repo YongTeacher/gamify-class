@@ -1,4 +1,4 @@
-import { passwordHash, verifyPassword, signSession, readSession, hmac } from './auth.js';
+import { passwordHash, verifyPassword, signSession, readSession, hmac, validStudentSecret } from './auth.js';
 import { sheetsRepository } from './repository.js';
 const STUDENT = new Set(['myReports','report.open','report.save','report.submit']);
 const ADMIN = new Set(['groups.create','groups.update','students.list','students.import','student.update','assessments.list','assessment.save','reports.list','review','publications.list','publication.generate','publication.save','publication.publish','publication.hide']);
@@ -36,10 +36,16 @@ export async function handle(request, env, injectedRepository) {
         const hash=groupId==='legacy' ? env.LAB_ADMIN_HASH : (group?.passwordHash || '0'.repeat(32)+':'+ '0'.repeat(64));
         if (await verifyPassword(password, hash) && (groupId==='legacy' || group)) user = { role: 'teacher',groupId,owner:groupId==='legacy',groupVersion:group?.authVersion || 1 };
       } else {
-        const s = await repo.execute('auth.lookup', payload, { role: 'system' });
+        let s = await repo.execute('auth.lookup', payload, { role: 'system' });
+        if(payload.setupPin===true) {
+          if(!/^\d{4}$/.test(password) || password!==payload.pinConfirm) return json({error:'같은 숫자 4자리 PIN을 두 번 입력하세요.'},400);
+          if(!s || s.passwordHash) return json({error:'명단 정보를 확인하세요. 이미 PIN/접속 코드가 있으면 기존 정보로 로그인하거나 선생님께 재설정을 요청하세요.'},409);
+          s=await repo.execute('auth.claim',{groupId,id:s.id,authVersion:s.authVersion,passwordHash:await passwordHash(password)},{role:'system'});
+          user={role:'student',groupId,id:s.id,authVersion:s.authVersion};
+        }
         // Constant-cost password derivation even when a roster entry doesn't exist.
         const stored = s?.passwordHash || '00000000000000000000000000000000:' + '0'.repeat(64);
-        if (await verifyPassword(password, stored) && s) user = { role: 'student', groupId, id: s.id, authVersion: s.authVersion };
+        if (!user && await verifyPassword(password, stored) && s) user = { role: 'student', groupId, id: s.id, authVersion: s.authVersion };
       }
       if (!user) return json({ error: '등록 정보 또는 접속 코드가 일치하지 않습니다.' }, 401);
       return json({ result: await repo.execute('me', {}, user) }, 200, { 'Set-Cookie': cookie(await signSession(user, env.LAB_SESSION_SECRET)) });
@@ -67,7 +73,7 @@ export async function handle(request, env, injectedRepository) {
       const rows = [];
       for (const student of payload.students) {
         const password = String(student.password || '');
-        if (password && (password.length < 8 || password.length > 128)) return json({ error: '학생 접속 코드는 8~128자로 지정하세요.' }, 400);
+        if (password && !validStudentSecret(password)) return json({ error: '학생 PIN은 숫자 4자리, 기존 접속 코드는 8~128자입니다.' }, 400);
         const { password: ignored, passwordHash: untrusted, ...info } = student;
         rows.push({ ...info, ...(password ? { passwordHash: await passwordHash(password) } : {}) });
       }
@@ -76,7 +82,7 @@ export async function handle(request, env, injectedRepository) {
     if (action === 'student.update') {
       delete payload.passwordHash;
       if (payload.password) {
-        if (payload.password.length < 8 || payload.password.length > 128) return json({ error: '접속 코드는 8~128자로 지정하세요.' }, 400);
+        if (!validStudentSecret(payload.password)) return json({ error: '학생 PIN은 숫자 4자리, 기존 접속 코드는 8~128자입니다.' }, 400);
         payload.passwordHash = await passwordHash(payload.password);
       }
       delete payload.password;

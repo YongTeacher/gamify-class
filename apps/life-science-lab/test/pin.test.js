@@ -1,0 +1,41 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {fixture} from './fixture.js';
+import {handle} from '../server/api.js';
+import {passwordHash,verifyPassword} from '../server/auth.js';
+test('명단 학생만 최초 PIN 등록, 중복 등록·타 그룹·PIN 덮어쓰기 차단',async()=>{
+  const f=fixture(),env={LAB_SESSION_SECRET:'pin-test-only-secret',LAB_ADMIN_HASH:await passwordHash('root-test-only')},repo={execute:async(a,p,u)=>f.run(a,p,u || {})};
+  const row={year:2026,grade:2,classNo:1,number:9,name:'PIN가상학생'};
+  f.run('students.import',{students:[row]});const original=f.db.all('Students').find((s)=>s.number===9);
+  assert.equal(original.passwordHash,null);
+  const request=async(action,payload,cookie='')=>{
+    const r=await handle(new Request('https://lab.test/api/lab/rpc',{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://lab.test',Cookie:cookie},body:JSON.stringify({action,payload})}),env,repo);
+    return {status:r.status,cookie:r.headers.get('Set-Cookie')?.split(';')[0],body:await r.json()};
+  };
+  const base={...row,role:'student',password:'0123',setupPin:true,pinConfirm:'0123'};
+  assert.equal((await request('login',{...base,pinConfirm:'1234'})).status,400);
+  assert.equal((await request('login',{...base,password:'abcd',pinConfirm:'abcd'})).status,400);
+  assert.equal((await request('login',{...base,name:'없는학생'})).status,409);
+  const login=await request('login',base);assert.equal(login.status,200);assert.equal(login.body.result.pinRegistered,true);assert.ok(!JSON.stringify(login.body).includes('passwordHash'));
+  assert.equal((await request('login',{...base,password:'9876',pinConfirm:'9876'})).status,409);
+  assert.equal((await request('login',{...base,setupPin:false})).status,200);
+  const id=login.body.result.id;
+  const report=f.run('report.open',{assessmentId:globalThis.LAB_SEED.id},{role:'student',id,authVersion:2});
+  const teacher=await request('login',{role:'teacher',password:'root-test-only'});
+  assert.equal((await request('student.update',{id,password:'4567'},teacher.cookie)).status,200);
+  assert.equal((await request('myReports',{},login.cookie)).status,401);
+  const updated=f.db.all('Students').find((s)=>s.id===id);assert.equal(await verifyPassword('4567',updated.passwordHash),true);
+  assert.equal(f.db.all('Reports').find((r)=>r.id===report.id).studentId,id);
+  assert.equal((await request('student.update',{id,allowPinSetup:true},teacher.cookie)).status,200);
+  assert.equal(f.db.all('Students').find((s)=>s.id===id).passwordHash,null);
+  assert.equal((await request('login',{...base,password:'5678',pinConfirm:'5678'})).status,200);
+});
+test('동시에 최초 등록해도 한 PIN만 저장, 기존 코드는 계속 사용 가능',()=>{
+  const f=fixture(),row={year:2026,grade:2,classNo:1,number:9,name:'PIN가상학생'};
+  f.run('students.import',{students:[row]});const s=f.db.all('Students').find((s)=>s.number===9);
+  const p={id:s.id,authVersion:1,passwordHash:'a'.repeat(32)+':'+ 'b'.repeat(64)};
+  f.run('auth.claim',p,{role:'system'});
+  assert.throws(()=>f.run('auth.claim',p,{role:'system'}),/이미 PIN/);
+  assert.throws(()=>f.run('auth.claim',p,f.student),/인증 경로/);
+  assert.ok(f.db.all('Students')[0].passwordHash);
+});

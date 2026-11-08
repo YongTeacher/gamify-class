@@ -95,7 +95,7 @@ try {
   const rosterFile={name:'neis.csv',mimeType:'text/csv',buffer:Buffer.from('\uFEFF출석부\n번호,성명\n6,명렬표가상학생\n')};
   await page.locator('#roster-file').setInputFiles(rosterFile);
   await expect(page.locator('#roster-preview')).toContainText('신규 1명');
-  const generatedDownload=page.waitForEvent('download');await page.locator('[data-action=roster-codes]').click();await generatedDownload;
+  await expect(page.locator('[data-action=roster-codes]')).toHaveCount(0);await expect(page.locator('[data-action=import-roster]')).toBeEnabled();
   await page.locator('[data-action=import-roster]').click();await expect(page.locator('.table-wrap').last()).toContainText('명렬표가상학생');
   await page.locator('#roster-grade').fill('2');await page.locator('#roster-class').fill('1');await page.locator('#roster-year').fill('2026');
   await page.locator('#roster-file').setInputFiles(rosterFile);await expect(page.locator('#roster-preview')).toContainText('기존 1명');

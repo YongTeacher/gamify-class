@@ -42,15 +42,15 @@ export function parseRoster(rows, defaults = {}) {
   return data;
 }
 
-export function prepareRoster(rows, existing, makeCode = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), (v) => v.toString(16).padStart(2,'0')).join('')) {
+export function prepareRoster(rows, existing) {
   const codes = [];
   const students = rows.map((row) => {
     const old = existing.find((s) => studentKey(s)===studentKey(row));
     if (old && cleanStudentName(old.name)!==row.name) throw new Error('이미 등록된 학번의 이름이 다릅니다: '+row.grade+'-'+row.classNo+'-'+row.number);
     if (old) return {...row,password:''}; // Never reset or claim to know an existing student's code.
-    const password = row.password || makeCode();
-    if (password.length<8 || password.length>128) throw new Error(row.name+': 접속 코드는 8~128자여야 합니다.');
-    const student = {...row,password}; codes.push(student); return student;
+    const password = row.password || '';
+    if (password && !/^\d{4}$/.test(password) && (password.length<8 || password.length>128)) throw new Error(row.name+': PIN은 숫자 4자리, 접속 코드는 8~128자여야 합니다.');
+    const student = {...row,password}; if(password)codes.push(student); return student;
   });
   return {students,codes};
 }
