@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+<rect width="960" height="540" fill="#e6ecdc"/><g stroke="#c8d6ba" fill="none"><circle cx="670" cy="270" r="170"/><circle cx="670" cy="270" r="125"/><path d="M430 270h480M670 40v460"/></g>
+<path d="M615 148c-85 9-122 104-75 170 33 46 107 66 152 21l-40-53 66-35c33-71-37-118-103-103z" fill="#35664d"/>
+<path d="m712 225 36 38-44 43-41-32z" fill="#de8554"/><circle cx="756" cy="150" r="18" fill="#b2ce78"/>
+<text x="62" y="200" font-family="sans-serif" font-size="18" letter-spacing="3" fill="#537052">GAMIFY CLASS</text>
+<text x="60" y="258" font-family="sans-serif" font-size="44" font-weight="700" fill="#1d4435">생명과학</text>
+<text x="60" y="315" font-family="sans-serif" font-size="44" font-weight="700" fill="#1d4435">탐구 연구소</text>
+<text x="62" y="370" font-family="sans-serif" font-size="17" fill="#537052">EXPLORE · RECORD · SHARE</text>
+</svg>

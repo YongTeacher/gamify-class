@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="탐구하고, 기록하고, 공유하는 생명과학 지식 아카이브">
+  <title>생명과학 탐구 연구소 · Gamify Class</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./seed.js" defer></script>
+  <script src="./vendor/xlsx.full.min.js" defer></script>
+  <script src="./app.js" type="module"></script>
+</head>
+<body>
+  <a class="skip" href="#main">본문 바로가기</a>
+  <header class="topbar">
+    <a href="#activities" class="brand"><span class="brand-icon" aria-hidden="true">◈</span><span>생명과학 탐구 연구소<small>LIFE SCIENCE RESEARCH LAB</small></span></a>
+    <nav aria-label="연구소 메뉴">
+      <a href="#activities" data-nav="activities">탐구 활동</a><a href="#lab" data-nav="lab">나의 연구실</a><a href="#archive" data-nav="archive">탐구 아카이브</a><a href="#teacher" data-nav="teacher">교사 관리실</a>
+    </nav>
+    <div id="identity"><a href="#lab" class="button small">로그인 ↗</a></div>
+  </header>
+  <div id="connection" class="connection" hidden></div>
+  <main id="main" tabindex="-1"><p class="loading">연구소를 열고 있습니다…</p></main>
+  <footer><a href="https://gamifyclass.pages.dev/apps/">← GAMIFY CLASS</a><span>탐구하고, 기록하고, 공유하는 생명과학 지식 아카이브</span><small>제작. 용인삼계고 교사 배성용</small></footer>
+  <dialog id="modal" aria-labelledby="modal-title"><div class="dialog-head"><h2 id="modal-title"></h2><button id="close-modal" class="icon-button" aria-label="닫기">×</button></div><div id="modal-body"></div></dialog>
+  <div id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

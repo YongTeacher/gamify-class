@@ -1,0 +1,97 @@
+import { chromium, expect } from '@playwright/test';
+import { mkdir } from 'node:fs/promises';
+await mkdir('.qa',{recursive:true});
+const browser=await chromium.launch({channel:'msedge',headless:true});
+const errors=[],base='http://localhost:8791/apps/life-science-lab/';
+const context=await browser.newContext({viewport:{width:1440,height:1000}});
+const page=await context.newPage();
+page.on('pageerror',(e)=>errors.push(e.message));
+page.on('dialog',(d)=>d.accept());
+try {
+  await page.goto(base);await expect(page.locator('.hero')).toBeVisible();
+  await page.screenshot({path:'.qa/activities-desktop.png',fullPage:true});
+  await page.locator('[data-open]').first().click();
+  await page.locator('[name=year]').fill('2026');await page.locator('[name=grade]').fill('2');
+  await page.locator('[name=classNo]').fill('1');await page.locator('[name=number]').fill('1');
+  await page.locator('[name=name]').fill('가상연구자1');await page.locator('[name=password]').fill('student-demo-2026');
+  await page.locator('#login-form button').click();
+  await expect(page.locator('h1')).toContainText('가상연구자1');
+  await page.locator('[data-nav=activities]').click();await page.locator('[data-open]').first().click();
+  await expect(page.locator('#answer')).toBeVisible();
+  await page.locator('#answer').fill('카탈레이스: 과산화수소를 분해하는 효소. <script>alert("xss")</script>');
+  await page.locator('[data-action=retry-save]').click();
+  await expect(page.locator('#save-status')).toContainText('서버에 저장 완료');
+  await page.reload();await expect(page.locator('#answer')).toContainText('카탈레이스');
+  for(let i=1;i<8;i++){
+    await page.locator('[data-step="'+i+'"]').click();
+    await page.locator('#answer').fill('테스트용 탐구 '+i+' — 자료 미확인인 수치는 작성하지 않았습니다.');
+  }
+  await page.locator('[data-step="8"]').click();await page.locator('[data-action=add-reference]').click();
+  await page.locator('[data-key=title]').fill('카탈레이스 참고 자료');
+  await page.locator('[data-key=author]').fill('테스트 기관');
+  await page.locator('[data-key=source]').fill('https://example.org/catalase');
+  await page.locator('[data-action=retry-save]').click();await expect(page.locator('#save-status')).toContainText('서버에 저장 완료');
+  await page.screenshot({path:'.qa/editor-desktop.png',fullPage:true});
+  await page.locator('[data-action=preview-report]').click();await page.locator('[data-action=submit-report]').click();
+  await expect(page.locator('main .tag').first()).toContainText('검토 대기');
+  await expect(page.locator('#answer')).toHaveAttribute('readonly','');
+  await page.locator('[data-action=logout]').click();await page.locator('[data-nav=teacher]').click();
+  await page.locator('[name=password]').fill('teacher-demo-2026');await page.locator('#login-form button').click();
+  await expect(page.locator('[data-review]').first()).toBeVisible();
+  await page.locator('[data-review]').first().click();
+  await page.locator('[name=feedback]').fill('기능의 근거를 보완해 주세요.');
+  await page.locator('button[value=revision]').click();
+  await expect(page.locator('#report-table')).toContainText('보완 요청');
+  await page.locator('[data-action=logout]').click();await page.locator('[data-nav=lab]').click();
+  for(const [key,value] of Object.entries({year:'2026',grade:'2',classNo:'1',number:'1',name:'가상연구자1',password:'student-demo-2026'}))await page.locator('[name='+key+']').fill(value);
+  await page.locator('#login-form button').click();await page.locator('a[href="#write/enzyme-structure"]').click();
+  await expect(page.locator('main .notice')).toContainText('근거를 보완');
+  await page.locator('#answer').fill('카탈레이스 연구를 보완했습니다.');
+  await page.locator('[data-action=preview-report]').click();await page.locator('[data-action=submit-report]').click();
+  await expect(page.locator('main .tag').first()).toContainText('검토 대기');
+  await page.locator('[data-action=logout]').click();await page.locator('[data-nav=teacher]').click();
+  await page.locator('[name=password]').fill('teacher-demo-2026');await page.locator('#login-form button').click();
+  await page.locator('[data-review]').first().click();await page.locator('button[value=approved]').click();
+  await page.locator('[data-generate]').first().click();await page.locator('[data-edit-publication]').first().click();
+  await page.locator('[name=title]').fill('카탈레이스, 생명을 지키는 작은 촉매');
+  await page.locator('[name=summary]').fill('가상 학생이 작성한 브라우저 테스트용 전시본입니다.');
+  await page.locator('#publication-form button[type=submit],#publication-form button.primary').first().click();
+  await expect(page.locator('#publication-state')).toContainText('저장 완료');
+  await page.locator('#publication-consent').check();await page.locator('[data-action=publish]').click();
+  await expect(page.locator('#admin-content')).toContainText('공개 중');
+  await page.locator('[data-nav=archive]').click();await page.locator('a[href^="#work/"]').first().click();
+  await expect(page.locator('.infographic')).toContainText('익명의 연구자');
+  await expect(page.locator('.infographic')).not.toContainText('가상연구자1');
+  await page.screenshot({path:'.qa/archive-detail.png',fullPage:true});
+  await page.locator('[data-nav=teacher]').click();await page.locator('[data-tab=publications]').click();
+  await page.locator('[data-hide-publication]').first().click();await page.locator('[data-nav=archive]').click();
+  await expect(page.locator('#works')).toContainText('첫 번째 발견');
+  // Exercise the actual browser Excel reader and dynamic assessment editor.
+  await page.locator('[data-nav=teacher]').click();await page.locator('[data-tab=students]').click();
+  for (const [format,number] of [['csv',3],['xlsx',4],['xls',5]]) {
+    const bytes=await page.evaluate(({format,number})=>{
+      const sheet=XLSX.utils.aoa_to_sheet([['학년도','학년','반','번호','이름','접속코드'],[2026,2,1,number,'파일가상학생'+number,'test-code-2026']]);
+      const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,sheet,'명단');
+      if(format==='csv')return Array.from(new TextEncoder().encode('\uFEFF'+XLSX.utils.sheet_to_csv(sheet)));
+      return Array.from(new Uint8Array(XLSX.write(book,{type:'array',bookType:format==='xls'?'biff8':'xlsx'})));
+    },{format,number});
+    await page.locator('#roster-file').setInputFiles({name:'test-roster.'+format,mimeType:'application/octet-stream',buffer:Buffer.from(bytes)});
+    await expect(page.locator('#roster-preview')).toContainText('1명 확인');
+    await page.locator('[data-action=import-roster]').click();
+    await expect(page.locator('.table-wrap')).toContainText('파일가상학생'+number);
+  }
+  await page.locator('[data-tab=assessments]').click();await page.locator('[data-action=new-assessment]').click();
+  await page.locator('[name=title]').fill('세포 소기관의 구조와 기능');
+  await page.locator('[name=subject]').fill('생명과학');await page.locator('[name=category]').fill('세포 소기관');
+  await page.locator('[name=status]').selectOption('open');
+  await page.locator('[data-action=add-field]').click();
+  await page.locator('[data-field="1"] [data-prop=title]').fill('나의 결론');
+  await page.locator('#assessment-form > button.primary').click();
+  await expect(page.locator('#admin-content')).toContainText('세포 소기관의 구조와 기능');
+  // Mobile layout and tap targets.
+  await page.setViewportSize({width:390,height:844});await page.locator('[data-nav=activities]').click();
+  await page.screenshot({path:'.qa/activities-mobile.png',fullPage:true});
+  const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1);
+  expect(overflow).toBe(false);expect(errors).toEqual([]);
+  console.log('PASS: login, 9 steps, save/reload, submission lock, revision/resubmit, approval, publication, anonymity, unpublish, CSV/XLS/XLSX import, dynamic assessment, mobile overflow, no JS errors');
+} finally { await browser.close(); }

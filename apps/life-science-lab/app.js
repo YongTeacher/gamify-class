@@ -1,0 +1,354 @@
+import { ReportSaver } from './autosave.js';
+const $ = (s) => document.querySelector(s);
+const main = $('#main'), clone = (v) => structuredClone(v);
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+const state = { user:null, assessments:[], works:[], reports:[], configured:false, saver:null, step:0, adminTab:'reports', students:[], publications:[] };
+const statuses = { draft:'작성 중', submitted:'검토 대기', approved:'승인됨', revision:'보완 요청', rejected:'반려', open:'운영 중', closed:'마감', hidden:'비공개' };
+const date = (v) => v ? new Date(v).toLocaleString('ko-KR', { timeZone:'Asia/Seoul', dateStyle:'short', timeStyle:'short' }) : '별도 안내';
+const tag = (s) => '<span class="tag">' + esc(statuses[s] || s) + '</span>';
+function toast(msg) { $('#toast').textContent = msg; $('#toast').hidden = false; clearTimeout(toast.timer); toast.timer = setTimeout(() => $('#toast').hidden = true, 6500); }
+async function api(action, payload = {}) {
+  const response = await fetch('/api/lab/rpc', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ action,payload }), signal:AbortSignal.timeout(30000) });
+  let data;
+  try { data = await response.json(); } catch { throw new Error('서버 연결을 확인해 주세요.'); }
+  if (!response.ok) throw Object.assign(new Error(data.error || '요청 실패'), { status:response.status });
+  return data.result;
+}
+function errorBox(message) { return '<div class="notice error">' + esc(message) + '</div>'; }
+function dialog(title, body) { $('#modal-title').textContent = title; $('#modal-body').innerHTML = body; if (!$('#modal').open) $('#modal').showModal(); }
+$('#close-modal').onclick = () => $('#modal').close();
+function download(name, data, type = 'application/json') {
+  const url = URL.createObjectURL(new Blob([data], { type })), a = document.createElement('a');
+  a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function identity() {
+  $('#identity').innerHTML = state.user
+    ? '<span>' + esc(state.user.name) + '</span><button class="small ghost" data-action="logout">로그아웃</button>'
+    : '<a class="button small" href="#lab">로그인 ↗</a>';
+}
+async function boot() {
+  try {
+    const health = await fetch('/api/lab/health').then((r) => r.json()); state.configured = health.configured;
+    if (state.configured) {
+      const [data, archive] = await Promise.all([api('bootstrap'), api('archive')]);
+      state.assessments = data.assessments; state.works = archive.works;
+      try { state.user = await api('me'); } catch (e) { if (e.status !== 401) throw e; }
+    } else throw new Error('연결 준비');
+  } catch {
+    state.assessments = [clone(globalThis.LAB_SEED)];
+    $('#connection').hidden = false;
+    $('#connection').textContent = '연구소 연결 준비 중 · 탐구 안내를 먼저 둘러볼 수 있습니다. 로그인·서버 저장은 교사의 Google Sheets 연결 후 사용할 수 있습니다.';
+  }
+  identity(); await route();
+}
+async function route() {
+  try {
+    if (state.saver) { await state.saver.flush(); state.saver.stop(); }
+    state.saver = null;
+    const [page = 'activities', id] = location.hash.slice(1).split('/');
+    document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === page || (page === 'write' && a.dataset.nav === 'lab') || (page === 'work' && a.dataset.nav === 'archive')));
+    if (page === 'activities') activities();
+    else if (page === 'lab') await lab();
+    else if (page === 'write') await editor(id);
+    else if (page === 'archive') await archive();
+    else if (page === 'work') await work(id);
+    else if (page === 'teacher') await admin();
+    else activities();
+  } catch (e) { main.innerHTML = errorBox(e.message) + '<a class="button" href="#activities">탐구 활동으로</a>'; }
+}
+window.addEventListener('hashchange', route);
+window.addEventListener('beforeunload', (e) => { if (state.saver?.dirty) { e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('online', () => state.saver?.flush());
+function scienceFigure() {
+  return '<div class="science-figure" aria-label="효소의 활성 부위와 기질을 나타낸 개념도"><svg viewBox="0 0 500 340" role="img"><g fill="none" stroke="#bdcbb2"><circle cx="250" cy="170" r="130"/><circle cx="250" cy="170" r="102" stroke-dasharray="3 8"/><path d="M55 170h390M250 30v280"/></g><path d="M218 71C123 65 104 158 132 214c27 64 112 84 164 34l-47-63 68-36c8-39-45-80-99-78z" fill="#3b6a50"/><path d="m319 123 28 29-40 45-38-25z" fill="#db8256"/><circle cx="368" cy="88" r="14" fill="#b5ca87"/><path d="M341 207h72M142 87H83" stroke="#5e7850"/><text x="346" y="230" font-family="sans-serif" font-size="11" fill="#59724d">SUBSTRATE</text><text x="60" y="75" font-family="sans-serif" font-size="11" fill="#59724d">ENZYME</text></svg><div class="figure-caption"><span>FIG. 01 / STRUCTURE &amp; FUNCTION</span><span>개념도</span></div></div>';
+}
+function activities() {
+  main.innerHTML = '<section class="hero"><div><span class="eyebrow">A SMALL QUESTION, A NEW DISCOVERY</span><h1>작은 질문에서 시작되는<br><em>나만의 생명과학.</em></h1><p>궁금한 생명을 탐구하고, 나의 언어로 기록하세요.<br>한 편의 연구 노트가 모두의 지식이 되는 곳.</p><div class="actions"><a class="button primary" href="#lab">나의 연구 시작하기 ↗</a><a class="button ghost" href="#archive">전시관 둘러보기 →</a></div></div>' + scienceFigure() + '</section>' +
+    '<div class="section-heading"><div><p class="eyebrow">EXPLORE THE QUESTIONS</p><h2>지금 시작하는 탐구</h2><p>탐구 안내를 읽고, 관심 있는 주제를 선택하세요.</p></div><span class="tag">' + state.assessments.length + '개 탐구</span></div><div class="grid">' +
+    state.assessments.map((a, i) => '<article class="card"><div class="card-art"><span>RESEARCH / ' + String(i+1).padStart(2,'0') + '</span>◈</div><div class="card-body"><div class="actions">' + tag(a.status) + '<small>' + esc(a.subject) + '</small></div><h3 style="margin-top:18px">' + esc(a.title) + '</h3><p>' + esc(a.description) + '</p><small>' + a.year + '학년도 · ' + a.fields.length + '단계<br>시작 ' + date(a.startAt) + ' / 마감 ' + date(a.deadline) + '</small><div class="actions"><button class="primary" data-open="' + esc(a.id) + '">탐구 시작 →</button><button data-guide="' + esc(a.id) + '">안내문</button></div></div></article>').join('') +
+    '<article class="card"><div class="card-body"><span class="eyebrow">FROM NOTE TO EXHIBITION</span><h3 style="margin-top:25px">기록이 지식이 되는 과정</h3><p>01　질문하고 자료 찾기<br>02　연구 노트 작성과 제출<br>03　선생님의 검토와 피드백<br>04　승인된 탐구를 전시로 공유</p><a href="#archive" class="button ghost">탐구 아카이브 →</a></div></article></div>';
+}
+function login(role) {
+  const teacher = role === 'teacher';
+  main.innerHTML = '<section class="login-layout"><div class="login-story"><p class="eyebrow">' + (teacher ? 'TEACHER STUDIO' : 'MY RESEARCH NOTE') + '</p><h1>' + (teacher ? '함께 자라는<br>탐구를 위해.' : '오늘의 질문을<br>기록해 볼까요?') + '</h1><p>' + (teacher ? '학생의 연구 과정을 살피고,<br>새로운 발견이 전시가 되도록 도와주세요.' : '선생님이 등록한 정보와<br>개별 접속 코드로 연구실에 입장하세요.') + '</p></div><form id="login-form" class="login-form stack"><h2>' + (teacher ? '교사 로그인' : '학생 로그인') + '</h2>' +
+    (teacher ? '' : '<div class="form-grid"><label>학년도<input name="year" type="number" min="2020" max="2100" value="' + new Date().getFullYear() + '" required></label><label>학년<input name="grade" type="number" min="1" max="12" required></label><label>반<input name="classNo" type="number" min="1" max="100" required></label><label>번호<input name="number" type="number" min="1" max="999" required></label><label class="span-all">이름<input name="name" autocomplete="username" required></label></div>') +
+    '<label>' + (teacher ? '관리자 비밀번호' : '개인 접속 코드') + '<input name="password" type="password" minlength="' + (teacher ? 12 : 8) + '" maxlength="128" autocomplete="current-password" required></label><button class="primary" ' + (!state.configured ? 'disabled' : '') + '>연구소 입장 →</button><div id="login-error" role="alert"></div><p class="hint">' + (state.configured ? '학생 명단과 보고서는 이 연구소 안에서만 관리됩니다.' : '교사의 저장소 연결이 완료되면 로그인할 수 있습니다.') + '</p><a href="#' + (teacher ? 'lab' : 'teacher') + '" class="hint">' + (teacher ? '학생으로 참여하기 →' : '교사 관리실 →') + '</a></form></section>';
+  $('#login-form').onsubmit = async (e) => {
+    e.preventDefault(); const btn = e.target.querySelector('button'); btn.disabled = true;
+    try { state.user = await api('login', { ...Object.fromEntries(new FormData(e.target)), role }); identity(); await route(); }
+    catch (err) { $('#login-error').textContent = err.message; btn.disabled = false; }
+  };
+}
+async function lab() {
+  if (!state.user || state.user.role !== 'student') return login('student');
+  const data = await api('myReports'); state.reports = data.reports;
+  main.innerHTML = '<div class="page-heading"><span class="eyebrow">MY LABORATORY</span><h1>' + esc(state.user.name) + '의 연구 노트</h1><p class="muted">어제의 질문에서 오늘의 발견으로. 저장한 곳부터 이어서 탐구하세요.</p></div><div class="grid">' +
+    (data.reports.length ? data.reports.map((r) => '<article class="card"><div class="card-body">' + tag(r.status) + '<h3 style="margin-top:20px">' + esc(r.title) + '</h3><p>최근 저장 ' + date(r.updatedAt) + '</p>' + (r.review?.feedback ? '<div class="notice">선생님 피드백<br>' + esc(r.review.feedback) + '</div>' : '') + '<a class="button primary" href="#write/' + esc(r.assessmentId) + '">' + (['draft','revision'].includes(r.status) ? '이어 쓰기' : '보고서 확인') + ' →</a></div></article>').join('') : '<div class="empty"><h3>첫 연구 노트를 펼쳐 보세요.</h3><p>탐구 활동에서 주제를 선택하면<br>여기에 연구 노트가 생깁니다.</p><a class="button primary" href="#activities">탐구 고르기 →</a></div>') + '</div>';
+}
+function backupKey(id) { return 'life-lab:draft:' + state.user.id + ':' + id; }
+function backup(report) {
+  try { const key = backupKey(state.saver.report.id); if (report) localStorage.setItem(key, JSON.stringify({ report, at: Date.now() })); else localStorage.removeItem(key); }
+  catch { toast('이 기기의 복구본을 보관하지 못했습니다. 서버 저장 상태를 확인해 주세요.'); }
+}
+async function editor(id) {
+  if (state.user?.role !== 'student') return login('student');
+  const report = await api('report.open', { assessmentId:id });
+  state.step = 0;
+  state.saver = new ReportSaver(report, (r) => api('report.save', { id:r.id, version:r.version, content:r.content }),
+    (status, message) => { if ($('#save-status')) { $('#save-status').dataset.state = status; $('#save-status').textContent = message; } }, backup);
+  const writable = ['draft','revision'].includes(report.status);
+  if (writable) {
+    try {
+      const raw = localStorage.getItem(backupKey(report.id)), saved = raw ? JSON.parse(raw) : null;
+      if (saved && Date.now() - saved.at < 7 * 86400000 && saved.report.version === report.version && confirm('이 기기에 서버로 저장되지 않은 복구본이 있습니다. 이어서 작성할까요?')) {
+        state.saver.change(saved.report.content);
+      } else if (saved && saved.report.version !== report.version) {
+        toast('서버와 다른 버전의 복구본이 있습니다. 아래 복구본 다운로드로 확인하세요.');
+      }
+    } catch { toast('복구본을 읽지 못했습니다. 서버에서 불러온 내용으로 시작합니다.'); }
+  }
+  main.innerHTML = '<div class="page-heading"><span class="eyebrow">RESEARCH NOTE / ' + report.fields.length + ' STEPS</span><h1>' + esc(report.title) + '</h1><div class="actions">' + tag(report.status) + '<a class="hint" href="#lab">← 나의 연구실</a></div></div>' +
+    (report.review?.feedback ? '<div class="notice"><strong>선생님 피드백</strong><p class="prose">' + esc(report.review.feedback) + '</p></div>' : '') +
+    '<div class="savebar"><span id="save-status" role="status" aria-live="polite">서버 기록 불러오기 완료 · ' + date(report.updatedAt) + '</span><div class="actions"><button class="small" data-action="retry-save">지금 저장</button><button class="small ghost" data-action="backup">복구본 다운로드</button><button class="small" data-action="reload-report">최신본 불러오기</button></div></div>' +
+    '<div class="workspace"><aside><p id="progress-label" class="hint"></p><progress id="progress" max="100" value="0" aria-label="작성 진행률"></progress><nav id="steps" class="step-nav" aria-label="보고서 단계"></nav><div class="hint" style="margin-top:22px">자료 찾기<br>RISS · DBpia · KOCW<br>RCSB Protein Data Bank<br><br>확인되지 않은 수치는<br>‘자료 미확인’으로 기록하세요.</div></aside><section class="editor"><div id="editor-field"></div><div class="editor-meta"><span id="char-count"></span><span>최대 6,000자 / 항목</span></div><div class="actions"><button data-action="prev">← 이전</button><button data-action="next">다음 →</button><button class="primary" data-action="preview-report">전체 미리보기 · 제출</button></div></section></div>';
+  if (!writable) $('[data-action="retry-save"]').disabled = true;
+  renderStep();
+}
+const complete = (f, content) => f.type === 'references' ? (content[f.id] || []).some((r) => r.title && r.author && r.source) : !!String(content[f.id] || '').trim();
+function progress() {
+  const r = state.saver.report, done = r.fields.filter((f) => complete(f, r.content)).length;
+  $('#progress-label').textContent = done + ' / ' + r.fields.length + '개 항목 작성';
+  $('#progress').value = done / r.fields.length * 100;
+  $('#steps').innerHTML = r.fields.map((f,i) => '<button data-step="' + i + '" class="' + (i === state.step ? 'active' : '') + '" aria-current="' + (i === state.step ? 'step' : 'false') + '"><span class="step-index">' + (complete(f,r.content) ? '✓' : String(i+1).padStart(2,'0')) + '</span>' + esc(f.title) + '</button>').join('');
+}
+function renderStep() {
+  const r = state.saver.report, f = r.fields[state.step], locked = !['draft','revision'].includes(r.status);
+  progress();
+  $('#editor-field').innerHTML = '<span class="eyebrow">STEP ' + String(state.step+1).padStart(2,'0') + ' / ' + r.fields.length + '</span><h2>' + esc(f.title) + (f.required ? ' <small style="font-size:12px">필수</small>' : '') + '</h2><p class="editor-guide">' + esc(f.guide) + '</p>' +
+    (f.type === 'references' ? '<div id="references"></div>' + (!locked ? '<button data-action="add-reference">+ 참고 자료 추가</button>' : '') :
+      '<label><span class="hint">탐구 내용</span><textarea id="answer" maxlength="6000" ' + (locked ? 'readonly' : '') + ' placeholder="찾은 근거를 바탕으로 나의 생각을 적어 보세요.">' + esc(r.content[f.id] || '') + '</textarea></label>');
+  if (f.type === 'references') renderReferences(); else $('#answer').oninput = () => { r.content[f.id] = $('#answer').value; changed(); };
+  $('[data-action="prev"]').disabled = state.step === 0;
+  $('[data-action="next"]').disabled = state.step === r.fields.length - 1;
+  chars();
+}
+function chars() {
+  const r = state.saver.report, value = r.content[r.fields[state.step].id];
+  $('#char-count').textContent = (typeof value === 'string' ? value.length : JSON.stringify(value || []).length).toLocaleString() + '자';
+}
+function changed() { state.saver.change(state.saver.report.content); progress(); chars(); }
+function renderReferences() {
+  const r = state.saver.report, f = r.fields[state.step], list = r.content[f.id] || [], locked = !['draft','revision'].includes(r.status);
+  $('#references').innerHTML = list.map((v,i) => '<div class="reference-row"><strong>자료 ' + (i+1) + '</strong>' + [['title','자료 제목',300],['author','저자 또는 기관',200],['source','URL 또는 서지 정보',800]].map(([key,label,max]) => '<label>' + label + '<input data-ref="' + i + '" data-key="' + key + '" maxlength="' + max + '" value="' + esc(v[key]) + '" ' + (locked ? 'readonly' : '') + '></label>').join('') + (!locked ? '<button class="small ghost" data-delete-ref="' + i + '">자료 삭제</button>' : '') + '</div>').join('') || '<p class="hint">아래 버튼으로 참고 자료를 추가하세요.</p>';
+  $('#references').oninput = (e) => { if (e.target.dataset.ref === undefined) return; r.content[f.id][Number(e.target.dataset.ref)][e.target.dataset.key] = e.target.value; changed(); };
+}
+function reportHTML(r) {
+  return '<h2>' + esc(r.title) + '</h2>' + r.fields.map((f,i) => '<section class="preview-section"><h3>' + (i+1) + '. ' + esc(f.title) + '</h3><div class="prose">' + esc(f.type === 'references' ? (r.content[f.id] || []).map((v) => v.title + ' · ' + v.author + '\n' + v.source).join('\n\n') : (r.content[f.id] || '아직 작성하지 않았습니다.')) + '</div></section>').join('');
+}
+async function archive() {
+  if (state.configured) { try { state.works = (await api('archive')).works; } catch (e) { toast(e.message); } }
+  const works = state.works;
+  main.innerHTML = '<div class="page-heading"><span class="eyebrow">A GROWING COLLECTION OF DISCOVERIES</span><h1>우리의 질문이 모이면,<br>하나의 전시가 됩니다.</h1><p class="muted">선생님의 검토와 공개 승인을 거친 탐구 작품을 만나 보세요.</p></div><div class="stats"><div><strong>' + works.length + '</strong><small>누적 공개 작품</small></div>' +
+    [...new Set(works.map((w) => w.category))].map((c) => '<div><strong>' + works.filter((w) => w.category === c).length + '</strong><small>' + esc(c) + '</small></div>').join('') + '</div><div class="filters"><input id="work-search" type="search" placeholder="제목·탐구 내용 검색" aria-label="작품 검색"><select id="work-category" aria-label="탐구 분야"><option value="">모든 분야</option>' +
+    [...new Set(works.map((w) => w.category))].map((c) => '<option>' + esc(c) + '</option>').join('') + '</select><select id="work-year" aria-label="학년도"><option value="">모든 학년도</option>' +
+    [...new Set(works.map((w) => w.year))].sort((a,b) => b-a).map((y) => '<option>' + y + '</option>').join('') + '</select></div><div id="works"></div>';
+  ['#work-search','#work-category','#work-year'].forEach((s) => $(s).oninput = renderWorks); renderWorks();
+}
+function renderWorks() {
+  const q = $('#work-search').value.toLowerCase(), cat = $('#work-category').value, year = $('#work-year').value;
+  const works = state.works.filter((w) => (!cat || w.category === cat) && (!year || String(w.year) === year) && JSON.stringify([w.title,w.summary,w.sections]).toLowerCase().includes(q));
+  $('#works').innerHTML = works.length ? '<div class="grid">' + works.map((w) => '<article class="card"><div class="card-art"><span>' + w.year + ' COLLECTION</span>◈</div><div class="card-body">' + tag(w.category) + '<h3 style="margin-top:18px">' + esc(w.title) + '</h3><p>' + esc(w.summary || w.sections[0]?.body?.slice(0,100) || '') + '</p><small>' + esc(w.displayName) + ' · ' + date(w.publishedAt) + '</small><div class="actions"><a class="button primary" href="#work/' + esc(w.id) + '">전시 보기 →</a></div></div></article>').join('') + '</div>' : '<div class="empty"><h3>' + (state.works.length ? '검색 결과가 없습니다.' : '첫 번째 발견을 기다리고 있습니다.') + '</h3><p>공개 승인된 작품이 이곳에 차곡차곡 쌓입니다.</p></div>';
+}
+function infographic(w, compact = false) {
+  return '<article class="infographic ' + (compact ? 'compact' : '') + '"><header><span class="eyebrow">LIFE SCIENCE / ' + esc(w.year || '') + '</span><h1>' + esc(w.title) + '</h1><p class="prose">' + esc(w.summary || '') + '</p><small style="color:#d3e5c8">' + esc(w.displayName || '익명의 연구자') + ' · ' + esc(w.category || '') + '</small></header><div class="infographic-body">' +
+    (w.sections || []).map((s,i) => '<section class="info-block"><span class="eyebrow">RECORD ' + String(i+1).padStart(2,'0') + '</span><h3>' + esc(s.title) + '</h3><div class="prose">' + esc(s.body) + '</div></section>').join('') + '</div></article>';
+}
+async function work(id) {
+  if (state.configured) state.works = (await api('archive')).works;
+  const w = state.works.find((w) => w.id === id);
+  main.innerHTML = '<div class="actions" style="margin-bottom:25px"><a href="#archive" class="button ghost">← 아카이브</a><button data-action="print">인쇄 / PDF 저장</button></div>' + (w ? infographic(w) : '<div class="empty">공개되지 않았거나 찾을 수 없는 작품입니다.</div>');
+}
+async function admin() {
+  if (state.user?.role !== 'teacher') return login('teacher');
+  main.innerHTML = '<div class="page-heading"><span class="eyebrow">TEACHER STUDIO</span><h1>탐구의 다음 단계를 함께.</h1><p class="muted">명단부터 피드백, 최종 전시까지 한곳에서 관리하세요.</p></div><div class="admin-tabs">' +
+    [['reports','보고서 검토'],['students','학생 명단'],['assessments','탐구 활동 설정'],['publications','전시 관리']].map(([id,title]) => '<button data-tab="' + id + '" class="' + (id === state.adminTab ? 'active' : '') + '">' + title + '</button>').join('') +
+    '<button data-action="refresh-admin" class="ghost">↻ 새로고침</button></div><div id="admin-content"><p class="loading">불러오는 중…</p></div>';
+  if (state.adminTab === 'students') await students();
+  else if (state.adminTab === 'assessments') await assessments();
+  else if (state.adminTab === 'publications') await publications();
+  else await reports();
+}
+async function students() {
+  state.students = (await api('students.list')).students;
+  $('#admin-content').innerHTML = '<section class="panel"><h2>학생 명단 등록</h2><p class="hint">명단 머리글: 학년도, 학년, 반, 번호, 이름, 접속코드. 접속 코드는 8자 이상이며 학생에게 개별 전달하세요. 기존 학생은 중복 등록되지 않고 기존 코드가 유지됩니다.</p><div class="actions"><label>CSV / XLSX / XLS<input id="roster-file" type="file" accept=".csv,.xlsx,.xls"></label><button data-action="roster-template">CSV 양식 다운로드</button></div><div id="roster-preview"></div><hr style="border:0;border-top:1px solid var(--line);margin:25px 0"><form id="student-form" class="form-grid">' +
+    [['year','학년도','number',new Date().getFullYear()],['grade','학년','number',''],['classNo','반','number',''],['number','번호','number',''],['name','이름','text',''],['password','접속 코드','password','']].map(([id,label,type,value]) => '<label>' + label + '<input name="' + id + '" type="' + type + '" value="' + value + '" ' + (id==='password' ? 'minlength="8" maxlength="128"' : '') + ' required></label>').join('') +
+    '<button class="primary span-all">학생 직접 등록</button></form></section><section class="panel"><h2>' + state.students.length + '명의 연구자</h2><div class="table-wrap"><table><thead><tr><th>학년도</th><th>학번</th><th>이름</th><th>상태</th><th>관리</th></tr></thead><tbody>' +
+    state.students.map((s) => '<tr><td>' + s.year + '</td><td>' + s.grade + '-' + s.classNo + '-' + s.number + '</td><td>' + esc(s.name) + '</td><td>' + (s.active ? '활성' : '비활성') + '</td><td><button data-reset-student="' + s.id + '">코드 재설정</button> <button data-toggle-student="' + s.id + '">' + (s.active ? '이용 중지' : '이용 허용') + '</button></td></tr>').join('') + '</tbody></table></div></section>';
+  $('#student-form').onsubmit = async (e) => {
+    e.preventDefault(); const btn = e.target.querySelector('button'); btn.disabled = true;
+    try { await api('students.import', { students:[Object.fromEntries(new FormData(e.target))] }); toast('학생을 등록했습니다.'); await students(); }
+    catch (err) { toast(err.message); btn.disabled = false; }
+  };
+  $('#roster-file').onchange = readRoster;
+}
+async function readRoster(e) {
+  try {
+    const file = e.target.files[0]; if (!file) return;
+    if (file.size > 5 * 1024 * 1024) throw new Error('5MB 이하의 명단 파일을 선택하세요.');
+    if (!window.XLSX) throw new Error('엑셀 읽기 모듈을 불러오지 못했습니다.');
+    const book = XLSX.read(await file.arrayBuffer(), { type:'array' });
+    const rows = XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]], { header:1, defval:'' });
+    const aliases = { year:['학년도','year'], grade:['학년','grade'], classNo:['반','학급','classNo'], number:['번호','출석번호','number'], name:['이름','성명','name'], password:['접속코드','비밀번호','password'] };
+    const index = rows.findIndex((r) => r.some((c) => ['이름','성명','name'].includes(String(c).trim())));
+    if (index < 0) throw new Error('명단의 머리글 행을 찾을 수 없습니다. CSV 양식을 참고하세요.');
+    const header = rows[index].map((v) => String(v).replace(/\s/g,''));
+    const cols = Object.fromEntries(Object.entries(aliases).map(([key,names]) => [key,header.findIndex((h) => names.includes(h))]));
+    if (Object.values(cols).some((i) => i < 0)) throw new Error('학년도·학년·반·번호·이름·접속코드 열이 필요합니다.');
+    const data = rows.slice(index+1).filter((r) => r[cols.name]).map((r) => Object.fromEntries(Object.entries(cols).map(([k,i]) => [k,String(r[i]).trim()])));
+    if (!data.length || data.length > 100) throw new Error('한 번에 1~100명씩 등록하세요.');
+    state.roster = data;
+    $('#roster-preview').innerHTML = '<div class="notice">' + data.length + '명 확인 · ' + data.slice(0,5).map((s) => esc(s.grade+'-'+s.classNo+'-'+s.number+' '+s.name)).join(', ') + '</div><button class="primary" data-action="import-roster">이 명단 등록</button>';
+  } catch (err) { toast(err.message); }
+}
+async function reports() {
+  const [r,s,a] = await Promise.all([api('reports.list'),api('students.list'),api('assessments.list')]);
+  state.reports = r.reports; state.students = s.students; state.assessments = a.assessments;
+  $('#admin-content').innerHTML = '<div class="filters"><select id="report-assessment" aria-label="탐구 선택"><option value="">모든 탐구</option>' + a.assessments.map((v) => '<option value="' + v.id + '">' + esc(v.title) + '</option>').join('') + '</select><select id="report-status" aria-label="보고서 상태"><option value="">모든 상태</option>' +
+    Object.entries(statuses).filter(([k]) => ['draft','submitted','approved','revision','rejected'].includes(k)).map(([k,v]) => '<option value="' + k + '">' + v + '</option>').join('') + '</select><button data-action="export-reports">보고서 JSON 다운로드</button></div><div id="report-summary"></div><div class="panel table-wrap" id="report-table"></div>';
+  $('#report-assessment').onchange = renderReportTable; $('#report-status').onchange = renderReportTable; renderReportTable();
+}
+function renderReportTable() {
+  const aid = $('#report-assessment').value, status = $('#report-status').value;
+  const reports = state.reports.filter((r) => (!aid || r.assessmentId === aid));
+  const a = state.assessments.find((v) => v.id === aid);
+  const pending = a ? state.students.filter((s) => s.active && s.year === a.year && !reports.some((r) => r.studentId === s.id)) : [];
+  $('#report-summary').innerHTML = '<div class="stats" style="margin-bottom:20px"><div><strong>' + reports.length + '</strong><small>작성 보고서</small></div><div><strong>' + reports.filter((r) => r.status==='submitted').length + '</strong><small>검토 대기</small></div>' + (a ? '<div><strong>' + pending.length + '</strong><small>미참여</small></div>' : '') + '</div>';
+  $('#report-table').innerHTML = '<table><thead><tr><th>학생</th><th>탐구</th><th>상태</th><th>제출일</th><th>검토</th></tr></thead><tbody>' +
+    reports.filter((r) => !status || r.status === status).map((r) => '<tr><td>' + r.student.grade + '-' + r.student.classNo + '-' + r.student.number + ' ' + esc(r.student.name) + '</td><td>' + esc(r.title) + '</td><td>' + tag(r.status) + '</td><td>' + date(r.submittedAt) + '</td><td><button data-review="' + r.id + '">보고서 보기</button>' + (r.status === 'approved' ? ' <button data-generate="' + r.id + '">전시본 만들기</button>' : '') + '</td></tr>').join('') + '</tbody></table>' +
+    (pending.length ? '<p class="hint">아직 시작하지 않음: ' + pending.map((s) => esc(s.classNo+'반 '+s.number+'번 '+s.name)).join(', ') + '</p>' : '');
+}
+function review(id) {
+  const r = state.reports.find((v) => v.id === id);
+  dialog('보고서 검토 · ' + r.student.name, reportHTML(r) + (r.review ? '<div class="notice">최근 검토: ' + esc(r.review.feedback) + '</div>' : '') +
+    (r.status === 'submitted' ? '<form id="review-form" class="stack"><label>학생에게 보낼 피드백<textarea name="feedback" maxlength="4000" rows="4"></textarea></label><div class="actions"><button name="status" value="approved" class="primary">보고서 승인</button><button name="status" value="revision">보완 요청</button><button name="status" value="rejected" class="danger">반려</button></div><p class="hint">승인은 전시 공개가 아닙니다. 전시본을 확인한 후 별도로 공개하세요.</p></form>' : ''));
+  if ($('#review-form')) $('#review-form').onsubmit = async (e) => {
+    e.preventDefault(); const button = e.submitter; button.disabled = true;
+    try { await api('review', { id, version:r.version, status:button.value, feedback:new FormData(e.target).get('feedback') }); $('#modal').close(); toast('검토 결과를 전달했습니다.'); await reports(); }
+    catch (err) { toast(err.message); button.disabled = false; }
+  };
+}
+async function assessments() {
+  state.assessments = (await api('assessments.list')).assessments;
+  $('#admin-content').innerHTML = '<div class="actions" style="margin-bottom:25px"><button data-action="new-assessment" class="primary">+ 새 탐구 만들기</button></div><div class="grid">' +
+    state.assessments.map((a) => '<article class="card"><div class="card-body">' + tag(a.status) + '<h3 style="margin-top:20px">' + esc(a.title) + '</h3><p>' + a.year + '학년도 · ' + a.fields.length + '항목<br>' + esc(a.subject) + '</p><button data-edit-assessment="' + a.id + '">설정 편집</button></div></article>').join('') + '</div>';
+}
+function assessmentForm(id) {
+  state.editAssessment = id ? clone(state.assessments.find((a) => a.id === id)) : { title:'',subject:'',category:'',description:'',guide:'',year:new Date().getFullYear(),status:'hidden',startAt:'',deadline:'',fields:[{id:'question',title:'탐구 질문',guide:'탐구하고 싶은 질문을 적어 주세요.',required:true,type:'text'}] };
+  const a = state.editAssessment;
+  const localTime = (v) => v ? new Date(Date.parse(v) - new Date(v).getTimezoneOffset()*60000).toISOString().slice(0,16) : '';
+  dialog('탐구 활동 설정', '<form id="assessment-form" class="stack"><div class="form-grid">' +
+    [['title','탐구 제목'],['subject','과목명'],['category','탐구 분야'],['year','학년도']].map(([key,label]) => '<label>' + label + '<input name="' + key + '" value="' + esc(a[key]) + '" ' + (key==='year' ? 'type="number" min="2020" max="2100"' : 'maxlength="120"') + ' required></label>').join('') +
+    '<label>시작일 (기기 현지 시각)<input type="datetime-local" name="startAt" value="' + localTime(a.startAt) + '"></label><label>마감일 (기기 현지 시각)<input type="datetime-local" name="deadline" value="' + localTime(a.deadline) + '"></label><label>운영 상태<select name="status">' + ['hidden','open','closed'].map((s) => '<option value="' + s + '" ' + (a.status===s?'selected':'') + '>' + statuses[s] + '</option>').join('') + '</select></label></div><label>탐구 소개<textarea name="description" rows="2" maxlength="1000">' + esc(a.description) + '</textarea></label><label>수행평가 안내문<textarea name="guide" rows="4" maxlength="6000">' + esc(a.guide) + '</textarea></label><h3>작성 항목</h3><p class="hint">기존 보고서의 항목은 유지되며, 항목 변경은 이후 새로 시작하는 보고서부터 적용됩니다.</p><div id="fields" class="fields-list"></div><button type="button" data-action="add-field">+ 항목 추가</button><button class="primary">탐구 설정 저장</button></form>');
+  renderFields();
+  $('#assessment-form').onsubmit = async (e) => {
+    e.preventDefault(); const b=e.submitter; b.disabled=true;
+    try {
+      const data=Object.fromEntries(new FormData(e.target));
+      ['startAt','deadline'].forEach((k) => data[k] = data[k] ? new Date(data[k]).toISOString() : '');
+      await api('assessment.save', { ...a,...data,fields:a.fields }); $('#modal').close(); toast('탐구를 저장했습니다.'); await assessments();
+    } catch (err) { toast(err.message); b.disabled=false; }
+  };
+}
+function renderFields() {
+  $('#fields').innerHTML = state.editAssessment.fields.map((f,i) => '<div class="field-item" data-field="' + i + '"><label>항목명<input data-prop="title" value="' + esc(f.title) + '" required></label><label>입력 유형<select data-prop="type"><option value="text">서술형</option><option value="references" ' + (f.type==='references'?'selected':'') + '>참고 자료 목록</option></select></label><label class="span-all">작성 안내<textarea data-prop="guide" maxlength="1500">' + esc(f.guide) + '</textarea></label><label class="check"><input type="checkbox" data-prop="required" ' + (f.required?'checked':'') + '>필수 항목</label><div class="actions"><button type="button" data-move-field="' + i + '" data-direction="-1">↑</button><button type="button" data-move-field="' + i + '" data-direction="1">↓</button><button type="button" data-delete-field="' + i + '">삭제</button></div></div>').join('');
+  $('#fields').oninput = (e) => { const i=e.target.closest('[data-field]')?.dataset.field, key=e.target.dataset.prop; if (key) state.editAssessment.fields[i][key]=key==='required'?e.target.checked:e.target.value; };
+}
+async function publications() {
+  state.publications=(await api('publications.list')).publications;
+  $('#admin-content').innerHTML = '<p class="notice">학생 실명·학번은 자동으로 공개되지 않습니다. 전시 내용을 검토하고 학교의 공개 동의 절차를 확인한 뒤 공개하세요.</p><div class="grid">' +
+    state.publications.map((p) => '<article class="card"><div class="card-body">' + tag(p.visible?'공개 중 · v'+p.publishedVersion:'비공개') + '<h3 style="margin-top:20px">' + esc(p.draft.title) + '</h3><p>' + esc(p.category) + ' · ' + p.year + '</p><button data-edit-publication="' + p.id + '">전시 편집 · 미리보기</button>' + (p.visible?'<button class="ghost" data-hide-publication="' + p.id + '">공개 취소</button>':'') + '</div></article>').join('') + '</div>' +
+    (!state.publications.length?'<div class="empty">승인한 보고서에서 ‘전시본 만들기’를 누르면 여기에서 관리할 수 있습니다.</div>':'');
+}
+function editPublication(id) {
+  state.editPublication = clone(state.publications.find((p) => p.id===id));
+  const p=state.editPublication;
+  $('#admin-content').innerHTML = '<div class="actions" style="margin-bottom:20px"><button data-action="back-publications">← 전시 목록</button><span class="hint">수정본 저장 후 미리보기를 확인하고 공개하세요.</span></div><div class="publication-editor"><form id="publication-form" class="panel stack"><label>전시 제목<input name="title" maxlength="120" value="' + esc(p.draft.title) + '" required></label><label>표시명 (기본 익명)<input name="displayName" maxlength="40" value="' + esc(p.draft.displayName) + '"></label><label>핵심 소개 (교사 작성·확인)<textarea name="summary" maxlength="1200">' + esc(p.draft.summary) + '</textarea></label>' +
+    p.draft.sections.map((s,i) => '<label>' + esc(s.title) + '<textarea data-section="' + i + '" maxlength="6000">' + esc(s.body) + '</textarea></label>').join('') + '<button class="primary">전시 수정본 저장</button><p id="publication-state" role="status"></p><label class="check"><input type="checkbox" id="publication-consent">과학적 내용, 개인정보 및 공개 동의를 확인했습니다.</label><button type="button" data-action="publish" class="lime">미리보기 확인 · 최종 공개</button></form><div id="publication-preview">' + infographic({...p,...p.draft},true) + '</div></div>';
+  const form=$('#publication-form');
+  form.oninput=() => {
+    const data=Object.fromEntries(new FormData(form)); Object.assign(p.draft,data);
+    form.querySelectorAll('[data-section]').forEach((el)=>p.draft.sections[el.dataset.section].body=el.value);
+    state.publicationDirty=true; $('#publication-consent').checked=false;
+    $('#publication-preview').innerHTML=infographic({...p,...p.draft},true);
+    $('#publication-state').textContent='수정 내용을 먼저 저장해 주세요.';
+  };
+  // Consent itself should not mark content dirty or clear its own value.
+  $('#publication-consent').oninput=(e)=>e.stopPropagation();
+  state.publicationDirty=false;
+  form.onsubmit=async(e)=>{
+    e.preventDefault(); const btn=e.submitter;btn.disabled=true;
+    try { state.editPublication=await api('publication.save',{id:p.id,version:state.editPublication.version,content:p.draft}); state.publicationDirty=false;$('#publication-state').textContent='수정본 저장 완료. 공개 전 미리보기를 확인하세요.'; }
+    catch(err){toast(err.message);} finally{btn.disabled=false;}
+  };
+}
+document.addEventListener('click', async (e) => {
+  const b=e.target.closest('button'); if(!b) return;
+  try {
+    if(b.dataset.nav) return;
+    if(b.dataset.guide){const a=state.assessments.find((a)=>a.id===b.dataset.guide);dialog(a.title,'<p class="prose">'+esc(a.guide)+'</p><p>시작 '+date(a.startAt)+' / 마감 '+date(a.deadline)+'</p>'+a.fields.map((f,i)=>'<section class="preview-section"><h3>'+(i+1)+'. '+esc(f.title)+'</h3><p>'+esc(f.guide)+'</p></section>').join(''));return;}
+    if(b.dataset.open){ location.hash=state.user?.role==='student'?'write/'+b.dataset.open:'lab';return;}
+    if(b.dataset.step!==undefined){state.step=Number(b.dataset.step);renderStep();return;}
+    if(b.dataset.deleteRef!==undefined){const r=state.saver.report;r.content[r.fields[state.step].id].splice(Number(b.dataset.deleteRef),1);changed();renderReferences();return;}
+    if(b.dataset.tab){state.adminTab=b.dataset.tab;await admin();return;}
+    if(b.dataset.review){review(b.dataset.review);return;}
+    if(b.dataset.editAssessment){assessmentForm(b.dataset.editAssessment);return;}
+    if(b.dataset.deleteField!==undefined){state.editAssessment.fields.splice(Number(b.dataset.deleteField),1);renderFields();return;}
+    if(b.dataset.moveField!==undefined){const i=Number(b.dataset.moveField),j=i+Number(b.dataset.direction),fs=state.editAssessment.fields;if(j>=0&&j<fs.length)[fs[i],fs[j]]=[fs[j],fs[i]];renderFields();return;}
+    if(b.dataset.resetStudent){const password=prompt('새 개별 접속 코드 (8자 이상, 학생에게 개별 전달)');if(password){await api('student.update',{id:b.dataset.resetStudent,password});toast('코드를 변경하고 기존 로그인을 만료시켰습니다.');}return;}
+    if(b.dataset.toggleStudent){const s=state.students.find((s)=>s.id===b.dataset.toggleStudent);await api('student.update',{id:s.id,active:!s.active});await students();return;}
+    if(b.dataset.generate){b.disabled=true;await api('publication.generate',{id:b.dataset.generate});state.adminTab='publications';await admin();return;}
+    if(b.dataset.editPublication){editPublication(b.dataset.editPublication);return;}
+    if(b.dataset.hidePublication){const p=state.publications.find((p)=>p.id===b.dataset.hidePublication);await api('publication.hide',{id:p.id,version:p.version});await publications();return;}
+    switch(b.dataset.action){
+      case 'logout':
+        if(state.saver && !(await state.saver.flush()) && !confirm('미저장 내용은 이 기기에 복구본으로 남습니다. 로그아웃할까요?'))return;
+        state.saver?.stop();state.saver=null;await api('logout');state.user=null;state.reports=[];state.students=[];identity();await route();break;
+      case 'prev':state.step--;renderStep();break;
+      case 'next':state.step++;renderStep();break;
+      case 'add-reference':{
+        const r=state.saver.report,k=r.fields[state.step].id;r.content[k]||=[];
+        if(r.content[k].length>=20)throw new Error('참고 자료는 최대 20개입니다.');
+        r.content[k].push({title:'',author:'',source:''});changed();renderReferences();break;
+      }
+      case 'retry-save':if(state.saver)await state.saver.flush();break;
+      case 'reload-report':if(confirm('이 기기의 미저장 내용은 복구본으로 보관하고 서버 최신본을 불러올까요?')){state.saver.stop();state.saver=null;await route();}break;
+      case 'backup':{
+        let stored=null;try{stored=JSON.parse(localStorage.getItem(backupKey(state.saver.report.id))||'null');}catch{}
+        download('연구노트-복구본.json',JSON.stringify(stored?.report||state.saver.report,null,2));break;
+      }
+      case 'preview-report':{
+        const r=state.saver.report;
+        dialog('전체 보고서 미리보기',reportHTML(r)+(['draft','revision'].includes(r.status)?'<div class="notice">필수 항목과 출처를 확인하세요. 제출 후에는 교사가 보완을 요청해야 수정할 수 있습니다.</div><button class="primary" data-action="submit-report">최종 제출</button>':''));
+        break;
+      }
+      case 'submit-report':
+        b.disabled=true;
+        if(!(await state.saver.flush()))throw new Error('서버 저장을 완료한 후 제출하세요.');
+        {const r=state.saver.report;await api('report.submit',{id:r.id,version:r.version,content:r.content});state.saver.stop();state.saver=null;$('#modal').close();toast('최종 제출했습니다. 선생님의 검토를 기다려 주세요.');await route();}break;
+      case 'refresh-admin':await admin();break;
+      case 'roster-template':download('학생명단-양식.csv','\uFEFF학년도,학년,반,번호,이름,접속코드\n','text/csv;charset=utf-8');break;
+      case 'import-roster':b.disabled=true;await api('students.import',{students:state.roster});state.roster=null;toast('명단을 등록했습니다.');await students();break;
+      case 'export-reports':download('탐구보고서-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(state.reports,null,2));break;
+      case 'new-assessment':assessmentForm();break;
+      case 'add-field':if(state.editAssessment.fields.length>=20)throw new Error('항목은 최대 20개입니다.');state.editAssessment.fields.push({id:'field_'+crypto.randomUUID().slice(0,8),title:'',guide:'',type:'text',required:true});renderFields();break;
+      case 'back-publications':await publications();break;
+      case 'publish':
+        if(state.publicationDirty)throw new Error('수정본을 먼저 저장해 주세요.');
+        if(!$('#publication-consent').checked)throw new Error('내용 및 공개 동의 확인에 체크해 주세요.');
+        if(!confirm('이 전시본을 모든 방문자가 볼 수 있도록 공개할까요?'))return;
+        b.disabled=true;await api('publication.publish',{id:state.editPublication.id,version:state.editPublication.version,consent:true});toast('전시관에 공개했습니다.');await publications();break;
+      case 'print':window.print();break;
+    }
+  } catch(err){toast(err.message);b.disabled=false;}
+});
+boot();

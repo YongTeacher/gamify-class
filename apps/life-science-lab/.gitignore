@@ -1,0 +1,8 @@
+.dev.vars
+.qa/
+test-results/
+playwright-report/
+node_modules/
+dist/
+.clasprc.json
+.clasp.json

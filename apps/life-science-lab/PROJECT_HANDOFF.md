@@ -1,0 +1,72 @@
+# 생명과학 탐구 연구소 작업 인수인계
+
+최종 갱신: 2026-11-08
+
+## 작업 위치
+
+- 소유 저장소: baesisi3648/gamify-class
+- 로컬: D:/gamify_class/apps/life-science-lab
+- 운영 주소: https://life-science-lab.bsy0708.workers.dev/
+- 프런트 호환 경로: /apps/life-science-lab/
+- API: /api/lab/rpc 및 /api/lab/health
+- 저장소: 독립된 신규 Google Sheets + 신규 Apps Script
+- 생태월드는 구현 패턴만 참고했고 실제 학생 데이터나 기존 시트는 사용하지 않음.
+
+## 이번에 완료한 것
+
+학생·교사 화면, 9단계 효소 보고서, 자동저장과 복구, 명단 파일 등록,
+탐구 항목 관리, 검토와 보완·재제출, 전시본 편집·공개·취소를 구현했습니다.
+
+새 스프레드시트:
+https://docs.google.com/spreadsheets/d/10YZYoEJhYknsCvi00dLonO2Qoo6p31RHP_59AOk3xyA/edit
+
+필수 데이터 탭 7개와 공개 이력 탭을 만들었고, 효소 탐구와 9개 항목을 넣었습니다.
+학생·보고서·검토·전시 탭에는 실제 학생 자료를 넣지 않았습니다.
+
+## 완료한 검증
+
+- JavaScript 문법 검사 통과.
+- 권한·저장 순서·중복·제출 잠금·공개 분리·Apps Script 어댑터 테스트 13개 통과.
+- Microsoft Edge 브라우저에서 가상 계정으로 전체 작성·복원·제출·보완·재제출·승인·공개·취소 통과.
+- CSV / XLSX / XLS 명단 등록, 새 탐구 항목 생성 통과.
+- 390px 모바일 화면 가로 넘침 없음. 브라우저 JavaScript 오류 없음.
+- 기존 Pages Functions와 함께 Wrangler 빌드 성공.
+- 새 Sheets의 탭, 머리글, 효소 탐구 9개 항목 읽기 검증 완료.
+- 로컬 화면 캡처는 .qa/ 아래이며 Git에서 제외됩니다.
+
+브라우저 검증은 메모리 데모 저장소를 사용했습니다.
+실제 Apps Script 웹 앱까지의 네트워크 저장은 아직 연결하지 않아 검증하지 못했습니다.
+
+## 실제 수업 사용 전에 남은 것
+
+1. 새 시트에서 연결된 Apps Script 프로젝트를 열고 Code.gs, Domain.gs, Seed.gs를 추가.
+2. setupLifeScienceLab 실행, Google 권한 승인, 웹 앱으로 배포.
+3. Gamify Class Pages에 LAB_SHEETS_URL, LAB_SHEETS_SECRET,
+   LAB_SESSION_SECRET, LAB_ADMIN_HASH를 암호화된 비밀 변수로 설정.
+4. 배포 후 교사 로그인부터 실제 Sheets 왕복 저장을 확인.
+5. 실제 학생 명단 등록 및 개별 접속 코드 전달.
+
+자세한 절차와 환경 변수는 README.md에 있습니다.
+독립 Worker 운영 화면 배포와 관리자 해시·세션키 설정은 완료했습니다.
+Google 계정 승인 전이므로 Apps Script 생성·배포 및 Sheets 연결은 대기 중입니다.
+Google 로그인은 clasp를 사용하며 인증 파일은 .qa/clasp-auth.json으로 지정하고 Git에서 제외합니다.
+로그인 후 .qa/gas-project/에 준비된 코드로 새 시트에 연결된 스크립트를 생성합니다.
+최초 관리자 비밀번호는 .qa/operator-access.txt에만 보관합니다.
+
+## 로컬 변경 보존 주의
+
+작업 당시 루트 main은 원격과 갈라져 있고 마니또·애니멀 더비·ZEP의 로컬 변경도 있었습니다.
+이번 변경만 커밋하거나 푸시할 때 전체를 add/초기화하지 마세요.
+최신 원격 상태를 먼저 확인하고, 이번 기능의 파일만 분리하여 반영해야 합니다.
+
+이번 변경 범위:
+
+- apps/life-science-lab/ (신규 앱과 문서·테스트)
+- functions/api/lab/[[path]].js
+- assets/life-science-lab.svg
+- apps/index.html (진입 카드)
+- index.html (연구소 진입 링크)
+- _headers (새 연구소 경로의 보안 헤더)
+
+학생 파일, 사진, 접속 코드, 비밀 변수는 Git에 넣지 않습니다.
+메모리 데모의 가상 계정은 로컬 테스트용이며 운영 인증 우회 기능이 아닙니다.

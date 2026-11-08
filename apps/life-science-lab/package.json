@@ -1,0 +1,18 @@
+{
+  "name": "life-science-research-lab",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check app.js && node --check server/api.js && node --check server/auth.js && node --check domain.js && node --check seed.js",
+    "test": "node --test test/*.test.js",
+    "test:browser": "node test/browser.mjs",
+    "gas": "node scripts/build-gas.mjs",
+    "build": "node scripts/build-worker.mjs",
+    "password": "node scripts/password.mjs",
+    "dev": "node scripts/dev.mjs"
+  },
+  "devDependencies": {
+    "@google/clasp": "^3.4.1",
+    "@playwright/test": "^1.65.0"
+  }
+}

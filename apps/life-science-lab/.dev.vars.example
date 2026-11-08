@@ -1,0 +1,6 @@
+# Set these only in ignored .dev.vars or Cloudflare Pages encrypted secrets.
+# Never place actual values in this example.
+LAB_SHEETS_URL=https://script.google.com/macros/s/REPLACE_WITH_DEPLOYMENT_ID/exec
+LAB_SHEETS_SECRET=REPLACE_WITH_LAB_WEBHOOK_SECRET_FROM_APPS_SCRIPT
+LAB_SESSION_SECRET=REPLACE_WITH_64_CHARACTER_RANDOM_HEX
+LAB_ADMIN_HASH=REPLACE_WITH_SALT_COLON_PBKDF2_HASH
