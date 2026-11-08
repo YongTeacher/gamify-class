@@ -17,7 +17,7 @@ globalThis.LabDomain = (() => {
     if (!s || !s.active || s.authVersion !== actor.authVersion) fail(401, '로그인이 만료되었습니다.');
     return s;
   }
-  const cleanName = (v) => text(v,80).replace(/[（(]\s*공동\s*[)）]/g,'').trim();
+  const cleanName = (v) => text(v,80).replace(/[（(]\s*(?:공동|위탁)\s*[)）]/g,'').trim();
   const publicStudent = (s) => ({ id: s.id, year: s.year, grade: s.grade, classNo: s.classNo, number: s.number, name: cleanName(s.name), active: s.active, courseClasses:s.courseClasses || [] });
   function assessment(db, id) {
     const a = find(db, 'Assessments', id);

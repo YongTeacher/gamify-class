@@ -50,3 +50,14 @@ test('기존 데이터는 legacy에서만 유지, 재등록 시 공동 제외·�
   f.run('students.import',{students:[{...student,courseClass:'2-2'}]});
   assert.deepEqual(f.run('students.list').students[0].courseClasses,['2-1','2-2']);
 });
+test('기존 위탁 학생은 순수 이름으로 로그인하고 재등록해도 ID·암호·보고서 유지',()=>{
+  const f=fixture(),student=f.db.all('Students')[0];
+  f.db.put('Students',{...student,name:student.name+'(위탁)'});
+  const report=f.run('report.open',{assessmentId:globalThis.LAB_SEED.id},f.student);
+  assert.equal(f.run('auth.lookup',{year:student.year,grade:student.grade,classNo:student.classNo,number:student.number,name:student.name},{role:'system'}).id,student.id);
+  assert.equal(f.run('me',{},f.student).name,student.name);
+  f.run('students.import',{students:[{...student,name:student.name+'（위탁）'}]});
+  const saved=f.db.all('Students').find((s)=>s.id===student.id);
+  assert.equal(saved.name,student.name);assert.equal(saved.passwordHash,student.passwordHash);assert.equal(saved.authVersion,1);
+  assert.equal(f.run('myReports',{},f.student).reports[0].id,report.id);
+});

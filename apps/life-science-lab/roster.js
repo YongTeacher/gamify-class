@@ -5,7 +5,7 @@ const aliases = {
 };
 const normal = (v) => String(v ?? '').replace(/\s/g,'').toLowerCase();
 export const studentKey = (s) => [s.year,s.grade,s.classNo,s.number].map(Number).join(':');
-export const cleanStudentName = (v) => String(v ?? '').replace(/[（(]\s*공동\s*[)）]/g,'').trim();
+export const cleanStudentName = (v) => String(v ?? '').replace(/[（(]\s*(?:공동|위탁)\s*[)）]/g,'').trim();
 
 export function parseRoster(rows, defaults = {}) {
   const headerIndex = rows.findIndex((r) => r.some((v) => aliases.name.includes(normal(v))) && r.some((v) => [...aliases.number,...aliases.schoolNumber].includes(normal(v))));
