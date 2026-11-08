@@ -35,19 +35,19 @@ https://docs.google.com/spreadsheets/d/10YZYoEJhYknsCvi00dLonO2Qoo6p31RHP_59AOk3
 - 로컬 화면 캡처는 .qa/ 아래이며 Git에서 제외됩니다.
 
 브라우저 검증은 메모리 데모 저장소를 사용했습니다.
-실제 Apps Script 웹 앱까지의 네트워크 저장은 아직 연결하지 않아 검증하지 못했습니다.
+실제 운영 교사 로그인과 인증용 Sheets 쓰기, 탐구 9개 항목 및 관리 API의 Sheets 읽기를 확인했습니다.
+학생 보고서 전체 흐름은 가상 계정으로 검증했습니다.
 
 ## 실제 수업 사용 전에 남은 것
 
-1. 소유자가 Apps Script 편집기에서 setupLifeScienceLab을 처음 실행하여 스프레드시트 접근을 승인.
-2. 실제 교사 로그인과 Sheets 왕복 저장을 확인.
-3. 실제 학생 명단 등록 및 개별 접속 코드 전달.
+1. 실제 학생 명단 등록 및 개별 접속 코드 전달.
+2. 수업의 탐구 시작일·마감일 설정.
 
 자세한 절차와 환경 변수는 README.md에 있습니다.
 커밋 0949ee8을 main에 푸시했고 메인 Pages 자동 배포와 독립 Worker 운영 배포를 완료했습니다.
 Google 로그인과 Apps Script API 설정이 완료되어, 전용 스크립트 생성·코드 업로드·버전 2 배포까지 했습니다.
 운영 Worker에는 LAB_ADMIN_HASH, LAB_SESSION_SECRET, LAB_SHEETS_URL, LAB_SHEETS_SECRET 4개를 설정했습니다.
-실제 요청은 Google에서 403 접근 거부가 반환되어 소유자의 최초 스크립트 실행 권한 확인을 기다리고 있습니다.
+소유자의 최초 실행 승인이 완료되어 403 문제가 해결됐고 운영 API가 정상 응답합니다.
 
 전용 스크립트 편집기:
 https://script.google.com/d/1JT24XJVrDqh9tvvZuBou984bw6uT4gJ57wQDzn_O304MqAGKQE_F79Cg/edit
@@ -57,7 +57,12 @@ https://script.google.com/macros/s/AKfycbwrSvJKu6wSB7FTaJF2UIRevpx7bEQCi30KONHkZ
 Google 로그인은 clasp를 사용하며 인증 파일은 .qa/clasp-auth.json으로 지정하고 Git에서 제외합니다.
 .qa/gas-project/에는 비공개 연결키를 포함한 Bootstrap.gs가 생성되므로 이 폴더를 Git에 추가하지 마세요.
 스크립트 공개 접근 설정은 API에서 ANYONE_ANONYMOUS / USER_DEPLOYING으로 확인했습니다.
-실제 서버 저장에 성공한 것으로 보고하지 않았습니다.
+운영 인증 과정의 Sheets 쓰기와 관리 API 읽기를 확인했습니다.
+
+## 디자인 갱신
+
+2026-11-08: 초록색 테마를 네이비·화이트·쿨그레이 기반의 연구기관 스타일로 개편했습니다.
+연구 노트·교사 관리실·아카이브를 포함하고 데스크톱·390px 모바일에서 브라우저 검증했습니다.
 최초 관리자 비밀번호는 .qa/operator-access.txt에만 보관합니다.
 
 ## 로컬 변경 보존 주의

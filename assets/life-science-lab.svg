@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
-<rect width="960" height="540" fill="#e6ecdc"/><g stroke="#c8d6ba" fill="none"><circle cx="670" cy="270" r="170"/><circle cx="670" cy="270" r="125"/><path d="M430 270h480M670 40v460"/></g>
-<path d="M615 148c-85 9-122 104-75 170 33 46 107 66 152 21l-40-53 66-35c33-71-37-118-103-103z" fill="#35664d"/>
-<path d="m712 225 36 38-44 43-41-32z" fill="#de8554"/><circle cx="756" cy="150" r="18" fill="#b2ce78"/>
-<text x="62" y="200" font-family="sans-serif" font-size="18" letter-spacing="3" fill="#537052">GAMIFY CLASS</text>
-<text x="60" y="258" font-family="sans-serif" font-size="44" font-weight="700" fill="#1d4435">생명과학</text>
-<text x="60" y="315" font-family="sans-serif" font-size="44" font-weight="700" fill="#1d4435">탐구 연구소</text>
-<text x="62" y="370" font-family="sans-serif" font-size="17" fill="#537052">EXPLORE · RECORD · SHARE</text>
+<defs><pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse"><path d="M36 0H0V36" fill="none" stroke="#fff" stroke-opacity=".045"/></pattern><linearGradient id="fold"><stop stop-color="#c1d7f7"/><stop offset="1" stop-color="#527eb8"/></linearGradient></defs>
+<rect width="960" height="540" fill="#0b1c36"/><rect width="960" height="540" fill="url(#grid)"/>
+<path d="M60 130h38" stroke="#8bb4ec" stroke-width="3"/><text x="60" y="171" font-family="sans-serif" font-size="13" letter-spacing="3" fill="#93afd5">LIFE SCIENCE RESEARCH LAB</text>
+<text x="57" y="256" font-family="sans-serif" font-size="45" font-weight="700" fill="#fff">생명과학</text><text x="57" y="318" font-family="sans-serif" font-size="45" font-weight="700" fill="#fff">탐구 연구소</text>
+<text x="60" y="382" font-family="sans-serif" font-size="15" fill="#a5b8d3">탐구 · 연구 기록 · 디지털 아카이브</text>
+<g fill="none"><circle cx="710" cy="264" r="166" stroke="#365477" stroke-width="1"/><circle cx="710" cy="264" r="130" stroke="#365477" stroke-dasharray="2 8"/><path d="M520 264h380M710 70v388" stroke="#365477" stroke-width=".5"/><path d="M615 299c-55-48 2-127 45-97s-22 104 27 116 99-61 64-86-85 23-62 60 87 1 94-32-65-70-48-103 73 10 64 42-72 21-80 73 60 60 80 24" stroke="url(#fold)" stroke-linecap="round" stroke-width="16"/></g>
+<path d="M60 443h840" stroke="#2d4465"/><text x="60" y="480" font-family="sans-serif" font-size="12" letter-spacing="2" fill="#8ca6ca">GAMIFY CLASS / RESEARCH &amp; EDUCATION</text>
 </svg>
