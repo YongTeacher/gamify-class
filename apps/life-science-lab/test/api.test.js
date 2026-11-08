@@ -22,4 +22,6 @@ test('관리자 로그인 쿠키는 HttpOnly; 잘못된 암호 실패; 해시만
   const importing=await handle(request('students.import',{students:[{name:'가상학생',password:'test-pass-123'}]},cookie),env,{execute:async(a,p)=>{stored=p;return{count:1}}});
   assert.equal(importing.status,200);assert.equal(stored.students[0].password,undefined);
   assert.match(stored.students[0].passwordHash,/^[a-f0-9]{32}:[a-f0-9]{64}$/);
+  const repeated=await handle(request('students.import',{students:[{name:'가상학생',password:'',passwordHash:'untrusted-hash'}]},cookie),env,{execute:async(a,p)=>{stored=p;return{count:1}}});
+  assert.equal(repeated.status,200);assert.equal(stored.students[0].password,undefined);assert.equal(stored.students[0].passwordHash,undefined);
 });

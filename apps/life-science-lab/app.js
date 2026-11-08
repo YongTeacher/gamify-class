@@ -1,4 +1,5 @@
 import { ReportSaver } from './autosave.js';
+import { parseRoster, prepareRoster, rosterCSV } from './roster.js';
 const $ = (s) => document.querySelector(s);
 const main = $('#main'), clone = (v) => structuredClone(v);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -189,25 +190,26 @@ async function students() {
     try { await api('students.import', { students:[Object.fromEntries(new FormData(e.target))] }); toast('학생을 등록했습니다.'); await students(); }
     catch (err) { toast(err.message); btn.disabled = false; }
   };
+  state.roster = null;
+  $('#roster-file').closest('.actions').insertAdjacentHTML('beforebegin', '<div class="form-grid"><label>기본 학년도<input id="roster-year" type="number" value="'+new Date().getFullYear()+'" min="2020" max="2100"></label><label>기본 학년<input id="roster-grade" type="number" min="1" max="12" placeholder="예: 2"></label><label>기본 반<input id="roster-class" type="number" min="1" max="100" placeholder="예: 1"></label></div><p class="hint">나이스 명렬표는 번호·성명 열만 있어도 됩니다. 파일에 없는 학년도·학년·반을 지정하세요. 새 학생의 접속 코드는 자동 발급됩니다. 등록 전 접속 코드 명단을 다운로드해 안전하게 보관하고 학생에게 개별 전달하세요. 기존 학생의 코드와 자료는 유지됩니다.</p>');
+  $('#admin-content .panel > .hint').textContent = '명렬표를 업로드하고 미리보기를 확인한 뒤 등록하세요. 기존 학생의 코드와 자료는 유지됩니다.';
   $('#roster-file').onchange = readRoster;
+  for (const id of ['roster-year','roster-grade','roster-class']) $('#'+id).oninput = () => { state.roster=null; $('#roster-preview').innerHTML='설정이 변경되었습니다. 파일을 다시 선택하세요.'; $('#roster-file').value=''; };
 }
 async function readRoster(e) {
+  state.roster = null; $('#roster-preview').innerHTML = '';
   try {
     const file = e.target.files[0]; if (!file) return;
     if (file.size > 5 * 1024 * 1024) throw new Error('5MB 이하의 명단 파일을 선택하세요.');
     if (!window.XLSX) throw new Error('엑셀 읽기 모듈을 불러오지 못했습니다.');
     const book = XLSX.read(await file.arrayBuffer(), { type:'array' });
-    const rows = XLSX.utils.sheet_to_json(book.Sheets[book.SheetNames[0]], { header:1, defval:'' });
-    const aliases = { year:['학년도','year'], grade:['학년','grade'], classNo:['반','학급','classNo'], number:['번호','출석번호','number'], name:['이름','성명','name'], password:['접속코드','비밀번호','password'] };
-    const index = rows.findIndex((r) => r.some((c) => ['이름','성명','name'].includes(String(c).trim())));
-    if (index < 0) throw new Error('명단의 머리글 행을 찾을 수 없습니다. CSV 양식을 참고하세요.');
-    const header = rows[index].map((v) => String(v).replace(/\s/g,''));
-    const cols = Object.fromEntries(Object.entries(aliases).map(([key,names]) => [key,header.findIndex((h) => names.includes(h))]));
-    if (Object.values(cols).some((i) => i < 0)) throw new Error('학년도·학년·반·번호·이름·접속코드 열이 필요합니다.');
-    const data = rows.slice(index+1).filter((r) => r[cols.name]).map((r) => Object.fromEntries(Object.entries(cols).map(([k,i]) => [k,String(r[i]).trim()])));
-    if (!data.length || data.length > 100) throw new Error('한 번에 1~100명씩 등록하세요.');
-    state.roster = data;
-    $('#roster-preview').innerHTML = '<div class="notice">' + data.length + '명 확인 · ' + data.slice(0,5).map((s) => esc(s.grade+'-'+s.classNo+'-'+s.number+' '+s.name)).join(', ') + '</div><button class="primary" data-action="import-roster">이 명단 등록</button>';
+    const names = book.SheetNames.filter((name) => book.Sheets[name] && book.Sheets[name]['!ref']);
+    if (names.length !== 1) throw new Error('명단이 있는 시트 하나만 남긴 파일을 업로드하세요.');
+    const rows = XLSX.utils.sheet_to_json(book.Sheets[names[0]], { header:1, defval:'' });
+    const data = parseRoster(rows, {year:$('#roster-year').value,grade:$('#roster-grade').value,classNo:$('#roster-class').value});
+    const prepared = prepareRoster(data,state.students);
+    state.roster = prepared.students; state.rosterCodes = prepared.codes; state.rosterDownloaded = !prepared.codes.length;
+    $('#roster-preview').innerHTML = '<div class="notice">' + data.length + '명 확인 · 신규 '+prepared.codes.length+'명 / 기존 '+(data.length-prepared.codes.length)+'명 (기존 코드 유지)</div><div class="table-wrap"><table><thead><tr><th>학번</th><th>이름</th></tr></thead><tbody>'+data.map((s) => '<tr><td>'+s.grade+'-'+s.classNo+'-'+s.number+'</td><td>'+esc(s.name)+'</td></tr>').join('')+'</tbody></table></div><div class="actions">'+(prepared.codes.length ? '<button data-action="roster-codes">신규 학생 접속 코드 명단 다운로드</button>' : '')+'<button class="primary" data-action="import-roster" '+(prepared.codes.length ? 'disabled' : '')+'>이 명단 등록</button></div><p class="hint">'+(prepared.codes.length ? '접속 코드 명단을 먼저 다운로드하면 등록 버튼이 활성화됩니다. 접속 코드는 서버에 원문으로 보관되지 않습니다.' : '기존 학생의 코드와 자료는 바뀌지 않습니다.')+'</p>';
   } catch (err) { toast(err.message); }
 }
 async function reports() {
@@ -345,7 +347,8 @@ document.addEventListener('click', async (e) => {
         {const r=state.saver.report;await api('report.submit',{id:r.id,version:r.version,content:r.content});state.saver.stop();state.saver=null;$('#modal').close();toast('최종 제출했습니다. 선생님의 검토를 기다려 주세요.');await route();}break;
       case 'refresh-admin':await admin();break;
       case 'roster-template':download('학생명단-양식.csv','\uFEFF학년도,학년,반,번호,이름,접속코드\n','text/csv;charset=utf-8');break;
-      case 'import-roster':b.disabled=true;await api('students.import',{students:state.roster});state.roster=null;toast('명단을 등록했습니다.');await students();break;
+      case 'roster-codes':download('신규학생-접속코드.csv',rosterCSV(state.rosterCodes),'text/csv;charset=utf-8');state.rosterDownloaded=true;$('[data-action=import-roster]').disabled=false;break;
+      case 'import-roster':if(!state.roster || !state.rosterDownloaded)throw new Error('명단과 접속 코드 다운로드를 먼저 확인하세요.');b.disabled=true;await api('students.import',{students:state.roster});state.roster=null;state.rosterCodes=null;toast('명단을 등록했습니다.');await students();break;
       case 'export-reports':download('탐구보고서-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(state.reports,null,2));break;
       case 'new-assessment':assessmentForm();break;
       case 'add-field':if(state.editAssessment.fields.length>=20)throw new Error('항목은 최대 20개입니다.');state.editAssessment.fields.push({id:'field_'+crypto.randomUUID().slice(0,8),title:'',guide:'',type:'text',required:true});renderFields();break;

@@ -83,9 +83,24 @@ try {
     },{format,number});
     await page.locator('#roster-file').setInputFiles({name:'test-roster.'+format,mimeType:'application/octet-stream',buffer:Buffer.from(bytes)});
     await expect(page.locator('#roster-preview')).toContainText('1명 확인');
+    await expect(page.locator('[data-action=import-roster]')).toBeDisabled();
+    const downloaded = page.waitForEvent('download');
+    await page.locator('[data-action=roster-codes]').click();await downloaded;
     await page.locator('[data-action=import-roster]').click();
-    await expect(page.locator('.table-wrap')).toContainText('파일가상학생'+number);
+    await expect(page.locator('.table-wrap').last()).toContainText('파일가상학생'+number);
   }
+  // Raw NEIS export without code or class columns; then reimport without resetting codes.
+  await page.locator('#roster-grade').fill('2');await page.locator('#roster-class').fill('1');
+  await page.locator('#roster-year').fill('2026');
+  const rosterFile={name:'neis.csv',mimeType:'text/csv',buffer:Buffer.from('\uFEFF출석부\n번호,성명\n6,명렬표가상학생\n')};
+  await page.locator('#roster-file').setInputFiles(rosterFile);
+  await expect(page.locator('#roster-preview')).toContainText('신규 1명');
+  const generatedDownload=page.waitForEvent('download');await page.locator('[data-action=roster-codes]').click();await generatedDownload;
+  await page.locator('[data-action=import-roster]').click();await expect(page.locator('.table-wrap').last()).toContainText('명렬표가상학생');
+  await page.locator('#roster-grade').fill('2');await page.locator('#roster-class').fill('1');await page.locator('#roster-year').fill('2026');
+  await page.locator('#roster-file').setInputFiles(rosterFile);await expect(page.locator('#roster-preview')).toContainText('기존 1명');
+  await expect(page.locator('[data-action=roster-codes]')).toHaveCount(0);
+  await page.locator('[data-action=import-roster]').click();await expect(page.locator('#roster-preview')).toBeEmpty();await expect(page.locator('.table-wrap').last()).toContainText('명렬표가상학생');
   await page.locator('[data-tab=assessments]').click();await page.locator('[data-action=new-assessment]').click();
   await page.locator('[name=title]').fill('세포 소기관의 구조와 기능');
   await page.locator('[name=subject]').fill('생명과학');await page.locator('[name=category]').fill('세포 소기관');

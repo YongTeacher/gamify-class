@@ -11,7 +11,7 @@ const env=demo?{ LAB_SESSION_SECRET:randomHex(32),LAB_ADMIN_HASH:await passwordH
 const f=demo?fixture():null;
 if(f)for(const s of f.db.all('Students'))f.db.put('Students',{...s,passwordHash:await passwordHash('student-demo-2026')});
 const repo=f?{execute:async(a,p,u)=>f.run(a,p,u)}:undefined;
-const allowed=new Set(['index.html','app.js','styles.css','seed.js','autosave.js','vendor/xlsx.full.min.js']);
+const allowed=new Set(['index.html','app.js','styles.css','seed.js','autosave.js','roster.js','vendor/xlsx.full.min.js']);
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.woff2':'font/woff2'};
 http.createServer(async(req,res)=>{
   try{

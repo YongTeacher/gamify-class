@@ -51,9 +51,9 @@ export async function handle(request, env, injectedRepository) {
       const rows = [];
       for (const student of payload.students) {
         const password = String(student.password || '');
-        if (password.length < 8 || password.length > 128) return json({ error: '학생 접속 코드는 8~128자로 지정하세요.' }, 400);
+        if (password && (password.length < 8 || password.length > 128)) return json({ error: '학생 접속 코드는 8~128자로 지정하세요.' }, 400);
         const { password: ignored, passwordHash: untrusted, ...info } = student;
-        rows.push({ ...info, passwordHash: await passwordHash(password) });
+        rows.push({ ...info, ...(password ? { passwordHash: await passwordHash(password) } : {}) });
       }
       payload.students = rows;
     }
