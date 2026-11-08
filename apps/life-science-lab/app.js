@@ -3,13 +3,13 @@ import { parseRoster, prepareRoster, rosterCSV } from './roster.js';
 const $ = (s) => document.querySelector(s);
 const main = $('#main'), clone = (v) => structuredClone(v);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
-const state = { user:null, assessments:[], works:[], reports:[], configured:false, saver:null, step:0, adminTab:'reports', students:[], publications:[] };
+const state = { user:null, groups:[],groupId:new URL(location.href).searchParams.get('group') || 'legacy', assessments:[], works:[], reports:[], configured:false, saver:null, step:0, adminTab:'reports', students:[], publications:[] };
 const statuses = { draft:'작성 중', submitted:'검토 대기', approved:'승인됨', revision:'보완 요청', rejected:'반려', open:'운영 중', closed:'마감', hidden:'비공개' };
 const date = (v) => v ? new Date(v).toLocaleString('ko-KR', { timeZone:'Asia/Seoul', dateStyle:'short', timeStyle:'short' }) : '별도 안내';
 const tag = (s) => '<span class="tag">' + esc(statuses[s] || s) + '</span>';
 function toast(msg) { $('#toast').textContent = msg; $('#toast').hidden = false; clearTimeout(toast.timer); toast.timer = setTimeout(() => $('#toast').hidden = true, 6500); }
 async function api(action, payload = {}) {
-  const response = await fetch('/api/lab/rpc', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ action,payload }), signal:AbortSignal.timeout(30000) });
+  const response = await fetch('/api/lab/rpc', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ action,payload:{groupId:state.groupId,...payload} }), signal:AbortSignal.timeout(30000) });
   let data;
   try { data = await response.json(); } catch { throw new Error('서버 연결을 확인해 주세요.'); }
   if (!response.ok) throw Object.assign(new Error(data.error || '요청 실패'), { status:response.status });
@@ -26,14 +26,30 @@ function identity() {
   $('#identity').innerHTML = state.user
     ? '<span>' + esc(state.user.name) + '</span><button class="small ghost" data-action="logout">로그아웃</button>'
     : '<a class="button small" href="#lab">로그인 ↗</a>';
+  if(!$('#group-bar')) main.insertAdjacentHTML('beforebegin','<section id="group-bar" class="group-bar" aria-label="연구 그룹 선택"></section>');
+  $('#group-bar').innerHTML='<label>연구 그룹<select id="group-select">'+state.groups.map((g) => '<option value="'+esc(g.id)+'" '+(g.id===state.groupId?'selected':'')+'>'+esc(g.title)+'</option>').join('')+'</select></label><button class="small" data-action="group-link">학생 접속 링크 복사</button>';
+  $('#group-select').onchange=async(e) => {try{await switchGroup(e.target.value);}catch(err){toast(err.message);identity();}};
+}
+async function loadGroup() {
+  const [data,archive]=await Promise.all([api('bootstrap'),api('archive')]);state.assessments=data.assessments;state.works=archive.works;
+}
+async function switchGroup(id) {
+  if(state.saver && !(await state.saver.flush())) throw new Error('현재 보고서 저장을 완료한 뒤 그룹을 바꾸세요.');
+  if(state.user?.owner) state.user=await api('groups.enter',{targetId:id});
+  else if(state.user){if(!confirm('그룹을 바꾸면 로그아웃됩니다. 이동할까요?')){identity();return;}await api('logout');state.user=null;}
+  state.saver?.stop();state.saver=null;state.groupId=id;state.roster=null;state.rosterCodes=null;state.students=[];state.reports=[];state.publications=[];
+  const url=new URL(location.href);url.searchParams.set('group',id);url.hash='activities';history.replaceState(null,'',url);
+  await loadGroup();identity();await route();
 }
 async function boot() {
   try {
     const health = await fetch('/api/lab/health').then((r) => r.json()); state.configured = health.configured;
     if (state.configured) {
-      const [data, archive] = await Promise.all([api('bootstrap'), api('archive')]);
-      state.assessments = data.assessments; state.works = archive.works;
+      state.groups=(await api('groups.list')).groups;
+      if(!state.groups.some((g) => g.id===state.groupId))state.groupId='legacy';
       try { state.user = await api('me'); } catch (e) { if (e.status !== 401) throw e; }
+      if(state.user?.groupId)state.groupId=state.user.groupId;
+      await loadGroup();
     } else throw new Error('연결 준비');
   } catch {
     state.assessments = [clone(globalThis.LAB_SEED)];
@@ -72,13 +88,14 @@ function activities() {
 function login(role) {
   const teacher = role === 'teacher';
   main.innerHTML = '<section class="login-layout"><div class="login-story"><p class="eyebrow">' + (teacher ? 'TEACHER STUDIO' : 'MY RESEARCH NOTE') + '</p><h1>' + (teacher ? '함께 자라는<br>탐구를 위해.' : '오늘의 질문을<br>기록해 볼까요?') + '</h1><p>' + (teacher ? '학생의 연구 과정을 살피고,<br>새로운 발견이 전시가 되도록 도와주세요.' : '선생님이 등록한 정보와<br>개별 접속 코드로 연구실에 입장하세요.') + '</p></div><form id="login-form" class="login-form stack"><h2>' + (teacher ? '교사 로그인' : '학생 로그인') + '</h2>' +
-    (teacher ? '' : '<div class="form-grid"><label>학년도<input name="year" type="number" min="2020" max="2100" value="' + new Date().getFullYear() + '" required></label><label>학년<input name="grade" type="number" min="1" max="12" required></label><label>반<input name="classNo" type="number" min="1" max="100" required></label><label>번호<input name="number" type="number" min="1" max="999" required></label><label class="span-all">이름<input name="name" autocomplete="username" required></label></div>') +
+    (teacher ? '' : '<div class="form-grid"><label>학년도<input name="year" type="number" min="2020" max="2100" value="' + (state.groups.find((g) => g.id===state.groupId)?.year || new Date().getFullYear()) + '" required></label><label>학년<input name="grade" type="number" min="1" max="12" required></label><label>반<input name="classNo" type="number" min="1" max="100" required></label><label>번호<input name="number" type="number" min="1" max="999" required></label><label class="span-all">이름<input name="name" autocomplete="username" required></label></div>') +
     '<div><label for="login-password">' + (teacher ? '관리자 비밀번호' : '개인 접속 코드') + '</label><div class="password-field"><input id="login-password" name="password" type="password" minlength="8" maxlength="128" autocomplete="current-password" required><button type="button" data-action="toggle-password" aria-controls="login-password" aria-label="비밀번호 표시" aria-pressed="false">보기</button></div></div><button type="submit" class="primary" ' + (!state.configured ? 'disabled' : '') + '>연구소 입장 →</button><div id="login-error" role="alert"></div><p class="hint">' + (state.configured ? '학생 명단과 보고서는 이 연구소 안에서만 관리됩니다.' : '교사의 저장소 연결이 완료되면 로그인할 수 있습니다.') + '</p><a href="#' + (teacher ? 'lab' : 'teacher') + '" class="hint">' + (teacher ? '학생으로 참여하기 →' : '교사 관리실 →') + '</a></form></section>';
   $('#login-form').onsubmit = async (e) => {
     e.preventDefault(); const btn = e.target.querySelector('button[type="submit"]'); btn.disabled = true;
     try { state.user = await api('login', { ...Object.fromEntries(new FormData(e.target)), role }); identity(); await route(); }
     catch (err) { $('#login-error').textContent = err.message; btn.disabled = false; }
   };
+  $('#login-form h2').insertAdjacentHTML('afterend','<p class="notice">'+esc(state.groups.find((g) => g.id===state.groupId)?.title || '기존 연구실')+'</p>');
 }
 async function lab() {
   if (!state.user || state.user.role !== 'student') return login('student');
@@ -172,58 +189,88 @@ async function work(id) {
 async function admin() {
   if (state.user?.role !== 'teacher') return login('teacher');
   main.innerHTML = '<div class="page-heading"><span class="eyebrow">TEACHER STUDIO</span><h1>탐구의 다음 단계를 함께.</h1><p class="muted">명단부터 피드백, 최종 전시까지 한곳에서 관리하세요.</p></div><div class="admin-tabs">' +
-    [['reports','보고서 검토'],['students','학생 명단'],['assessments','탐구 활동 설정'],['publications','전시 관리']].map(([id,title]) => '<button data-tab="' + id + '" class="' + (id === state.adminTab ? 'active' : '') + '">' + title + '</button>').join('') +
+    [['reports','보고서 검토'],['students','학생 명단'],['assessments','탐구 활동 설정'],['publications','전시 관리'],['groups','그룹 관리']].map(([id,title]) => '<button data-tab="' + id + '" class="' + (id === state.adminTab ? 'active' : '') + '">' + title + '</button>').join('') +
     '<button data-action="refresh-admin" class="ghost">↻ 새로고침</button></div><div id="admin-content"><p class="loading">불러오는 중…</p></div>';
-  if (state.adminTab === 'students') await students();
+  if (state.adminTab === 'groups') await groups();
+  else if (state.adminTab === 'students') await students();
   else if (state.adminTab === 'assessments') await assessments();
   else if (state.adminTab === 'publications') await publications();
   else await reports();
 }
+async function groups() {
+  state.groups=(await api('groups.list')).groups;
+  const current=state.user.group || state.groups.find((g) => g.id===state.groupId);
+  const form=(id,g,create=false) => '<form id="'+id+'" class="panel stack"><h2>'+(create?'새 연구 그룹 만들기':'현재 그룹 설정')+'</h2><div class="form-grid">'+[['year','학년도','number',g.year],['semester','학기 (1 / 2 / 여름 / 겨울)','text',g.semester],['subject','과목','text',g.subject],['school','학교','text',g.school]].map(([key,label,type,value]) => '<label>'+label+'<input name="'+key+'" type="'+type+'" value="'+esc(value)+'" required maxlength="80" '+(key==='year'?'min="2020" max="2100"':'')+'></label>').join('')+'</div>'+(create || state.groupId!=='legacy' ? '<label>그룹 교사 암호'+(!create?' (유지하려면 비워 두세요)':'')+'<input name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" '+(create?'required':'')+'></label>':'<p class="hint">기존 연구실은 전체 관리자 암호를 사용합니다. 별도 교사 암호가 필요하면 새 그룹을 만드세요.</p>')+'<button class="primary">'+(create?'그룹 만들기':'그룹 설정 저장')+'</button></form>';
+  $('#admin-content').innerHTML='<p class="notice">그룹마다 학생·탐구·보고서·전시본을 분리합니다. 그룹 교사는 자신의 그룹만 관리합니다. 새 그룹에는 효소 탐구 양식이 복사되며 학생 자료는 복사되지 않습니다.</p>'+form('group-update',current)+(state.user.owner ? form('group-create',{year:new Date().getFullYear(),semester:'2',subject:'',school:''},true):'')+'<div class="grid">'+(state.user.owner?state.groups:[current]).map((g) => '<article class="card"><div class="card-body"><h3>'+esc(g.title)+'</h3>'+(g.id===state.groupId?'<p class="hint">현재 그룹</p>':'<button data-enter-group="'+esc(g.id)+'">관리하기</button>')+'</div></article>').join('')+'</div>';
+  for(const id of ['group-update','group-create']) if($('#'+id))$('#'+id).onsubmit=async(e) => {
+    e.preventDefault();const button=e.target.querySelector('button');button.disabled=true;
+    try{
+      const create=id==='group-create',payload=Object.fromEntries(new FormData(e.target));payload.version=state.user.groupVersion;
+      const result=await api(create?'groups.create':'groups.update',payload);
+      state.groups=(await api('groups.list')).groups;
+      if(create){toast('새 그룹을 만들었습니다. 이 그룹으로 이동합니다.');await switchGroup(result.id);state.adminTab='students';location.hash='teacher';await route();}
+      else if(state.user.owner){state.user=await api('me');identity();await groups();toast('그룹 설정을 저장했습니다.');}
+      else{await api('logout');state.user=null;identity();await route();toast('설정을 저장했습니다. 그룹 교사 암호로 다시 로그인하세요.');}
+    }catch(err){toast(err.message);button.disabled=false;}
+  };
+}
 async function students() {
   state.students = (await api('students.list')).students;
-  $('#admin-content').innerHTML = '<section class="panel"><h2>학생 명단 등록</h2><p class="hint">명단 머리글: 학년도, 학년, 반, 번호, 이름, 접속코드. 접속 코드는 8자 이상이며 학생에게 개별 전달하세요. 기존 학생은 중복 등록되지 않고 기존 코드가 유지됩니다.</p><div class="actions"><label>CSV / XLSX / XLS<input id="roster-file" type="file" accept=".csv,.xlsx,.xls"></label><button data-action="roster-template">CSV 양식 다운로드</button></div><div id="roster-preview"></div><hr style="border:0;border-top:1px solid var(--line);margin:25px 0"><form id="student-form" class="form-grid">' +
-    [['year','학년도','number',new Date().getFullYear()],['grade','학년','number',''],['classNo','반','number',''],['number','번호','number',''],['name','이름','text',''],['password','접속 코드','password','']].map(([id,label,type,value]) => '<label>' + label + '<input name="' + id + '" type="' + type + '" value="' + value + '" ' + (id==='password' ? 'minlength="8" maxlength="128"' : '') + ' required></label>').join('') +
-    '<button class="primary span-all">학생 직접 등록</button></form></section><section class="panel"><h2>' + state.students.length + '명의 연구자</h2><div class="table-wrap"><table><thead><tr><th>학년도</th><th>학번</th><th>이름</th><th>상태</th><th>관리</th></tr></thead><tbody>' +
-    state.students.map((s) => '<tr><td>' + s.year + '</td><td>' + s.grade + '-' + s.classNo + '-' + s.number + '</td><td>' + esc(s.name) + '</td><td>' + (s.active ? '활성' : '비활성') + '</td><td><button data-reset-student="' + s.id + '">코드 재설정</button> <button data-toggle-student="' + s.id + '">' + (s.active ? '이용 중지' : '이용 허용') + '</button></td></tr>').join('') + '</tbody></table></div></section>';
+  $('#admin-content').innerHTML = '<section class="panel"><h2>학생 명단 등록</h2><p class="hint">명단 머리글: 학년도, 학년, 반, 번호, 이름, 접속코드. 접속 코드는 8자 이상이며 학생에게 개별 전달하세요. 기존 학생은 중복 등록되지 않고 기존 코드가 유지됩니다.</p><div class="actions"><label>CSV / XLSX / XLS<input id="roster-file" type="file" accept=".csv,.xlsx,.xls" multiple></label><button data-action="roster-template">CSV 양식 다운로드</button></div><div id="roster-preview"></div><hr style="border:0;border-top:1px solid var(--line);margin:25px 0"><form id="student-form" class="form-grid">' +
+    [['year','학년도','number',(state.user.group?.year || new Date().getFullYear())],['grade','학년','number',''],['classNo','반','number',''],['number','번호','number',''],['name','이름','text',''],['courseClass','수업 반','text',''],['password','접속 코드','password','']].map(([id,label,type,value]) => '<label>' + label + '<input name="' + id + '" type="' + type + '" value="' + value + '" ' + (id==='password' ? 'minlength="8" maxlength="128"' : '') + ' '+(id==='courseClass'?'':'required')+'></label>').join('') +
+    '<button class="primary span-all">학생 직접 등록</button></form></section><section class="panel"><h2>' + state.students.length + '명의 연구자</h2><div class="table-wrap"><table><thead><tr><th>학년도</th><th>학번</th><th>이름</th><th>수업 반</th><th>상태</th><th>관리</th></tr></thead><tbody>' +
+    state.students.map((s) => '<tr><td>' + s.year + '</td><td>' + s.grade + '-' + s.classNo + '-' + s.number + '</td><td>' + esc(s.name) + '</td><td>'+esc((s.courseClasses || []).join(', '))+'</td><td>' + (s.active ? '활성' : '비활성') + '</td><td><button data-reset-student="' + s.id + '">코드 재설정</button> <button data-toggle-student="' + s.id + '">' + (s.active ? '이용 중지' : '이용 허용') + '</button></td></tr>').join('') + '</tbody></table></div></section>';
   $('#student-form').onsubmit = async (e) => {
     e.preventDefault(); const btn = e.target.querySelector('button'); btn.disabled = true;
     try { await api('students.import', { students:[Object.fromEntries(new FormData(e.target))] }); toast('학생을 등록했습니다.'); await students(); }
     catch (err) { toast(err.message); btn.disabled = false; }
   };
   state.roster = null;
-  $('#roster-file').closest('.actions').insertAdjacentHTML('beforebegin', '<div class="form-grid"><label>기본 학년도<input id="roster-year" type="number" value="'+new Date().getFullYear()+'" min="2020" max="2100"></label><label>기본 학년<input id="roster-grade" type="number" min="1" max="12" placeholder="예: 2"></label><label>기본 반<input id="roster-class" type="number" min="1" max="100" placeholder="예: 1"></label></div><p class="hint">나이스 명렬표는 번호·성명 열만 있어도 됩니다. 파일에 없는 학년도·학년·반을 지정하세요. 새 학생의 접속 코드는 자동 발급됩니다. 등록 전 접속 코드 명단을 다운로드해 안전하게 보관하고 학생에게 개별 전달하세요. 기존 학생의 코드와 자료는 유지됩니다.</p>');
+  $('#roster-file').closest('.actions').insertAdjacentHTML('beforebegin', '<div class="form-grid"><label>기본 학년도<input id="roster-year" type="number" value="'+(state.user.group?.year || new Date().getFullYear())+'" min="2020" max="2100"></label><label>기본 학년<input id="roster-grade" type="number" min="1" max="12" placeholder="예: 2"></label><label>기본 반<input id="roster-class" type="number" min="1" max="100" placeholder="예: 1"></label><label>수업 반 (파일에서 자동 인식)<input id="roster-course" placeholder="예: 2-1"></label></div><p class="hint">나이스 명렬표는 번호·성명 열만 있어도 됩니다. 파일에 없는 학년도·학년·반을 지정하세요. 새 학생의 접속 코드는 자동 발급됩니다. 등록 전 접속 코드 명단을 다운로드해 안전하게 보관하고 학생에게 개별 전달하세요. 기존 학생의 코드와 자료는 유지됩니다.</p>');
   $('#admin-content .panel > .hint').textContent = '명렬표를 업로드하고 미리보기를 확인한 뒤 등록하세요. 기존 학생의 코드와 자료는 유지됩니다.';
   $('#roster-file').onchange = readRoster;
-  for (const id of ['roster-year','roster-grade','roster-class']) $('#'+id).oninput = () => { state.roster=null; $('#roster-preview').innerHTML='설정이 변경되었습니다. 파일을 다시 선택하세요.'; $('#roster-file').value=''; };
+  const courseOptions=[...new Set(state.students.flatMap((s) => s.courseClasses || []))].sort();
+  $('#admin-content .panel:last-child .table-wrap').insertAdjacentHTML('beforebegin','<label>수업 반 필터<select id="student-course"><option value="">모든 수업 반</option>'+courseOptions.map((c) => '<option>'+esc(c)+'</option>').join('')+'</select></label>');
+  $('#student-course').onchange=() => {$('#admin-content .panel:last-child tbody').querySelectorAll('tr').forEach((row,i) => row.hidden=!!$('#student-course').value && !(state.students[i].courseClasses || []).includes($('#student-course').value));};
+  for (const id of ['roster-year','roster-grade','roster-class','roster-course']) $('#'+id).oninput = () => { state.roster=null; $('#roster-preview').innerHTML='설정이 변경되었습니다. 파일을 다시 선택하세요.'; $('#roster-file').value=''; };
 }
 async function readRoster(e) {
-  state.roster = null; $('#roster-preview').innerHTML = '';
+  state.roster = null; state.rosterCodes=null; $('#roster-preview').innerHTML = '';
   try {
-    const file = e.target.files[0]; if (!file) return;
-    if (file.size > 5 * 1024 * 1024) throw new Error('5MB 이하의 명단 파일을 선택하세요.');
-    if (!window.XLSX) throw new Error('엑셀 읽기 모듈을 불러오지 못했습니다.');
-    const book = XLSX.read(await file.arrayBuffer(), { type:'array' });
-    const names = book.SheetNames.filter((name) => book.Sheets[name] && book.Sheets[name]['!ref']);
-    if (names.length !== 1) throw new Error('명단이 있는 시트 하나만 남긴 파일을 업로드하세요.');
-    const rows = XLSX.utils.sheet_to_json(book.Sheets[names[0]], { header:1, defval:'' });
-    const data = parseRoster(rows, {year:$('#roster-year').value,grade:$('#roster-grade').value,classNo:$('#roster-class').value});
-    const prepared = prepareRoster(data,state.students);
-    state.roster = prepared.students; state.rosterCodes = prepared.codes; state.rosterDownloaded = !prepared.codes.length;
-    $('#roster-preview').innerHTML = '<div class="notice">' + data.length + '명 확인 · 신규 '+prepared.codes.length+'명 / 기존 '+(data.length-prepared.codes.length)+'명 (기존 코드 유지)</div><div class="table-wrap"><table><thead><tr><th>학번</th><th>이름</th></tr></thead><tbody>'+data.map((s) => '<tr><td>'+s.grade+'-'+s.classNo+'-'+s.number+'</td><td>'+esc(s.name)+'</td></tr>').join('')+'</tbody></table></div><div class="actions">'+(prepared.codes.length ? '<button data-action="roster-codes">신규 학생 접속 코드 명단 다운로드</button>' : '')+'<button class="primary" data-action="import-roster" '+(prepared.codes.length ? 'disabled' : '')+'>이 명단 등록</button></div><p class="hint">'+(prepared.codes.length ? '접속 코드 명단을 먼저 다운로드하면 등록 버튼이 활성화됩니다. 접속 코드는 서버에 원문으로 보관되지 않습니다.' : '기존 학생의 코드와 자료는 바뀌지 않습니다.')+'</p>';
-  } catch (err) { toast(err.message); }
+    const files=Array.from(e.target.files); if(!files.length)return;
+    if(!window.XLSX)throw new Error('엑셀 읽기 모듈을 불러오지 못했습니다.');
+    let data=[];
+    for(const file of files) {
+      if(file.size>5*1024*1024)throw new Error('5MB 이하의 명단 파일을 선택하세요.');
+      const book=XLSX.read(await file.arrayBuffer(),{type:'array'});
+      const names=book.SheetNames.filter((name) => book.Sheets[name] && book.Sheets[name]['!ref']);
+      if(names.length!==1)throw new Error('명단이 있는 시트 하나만 남긴 파일을 업로드하세요.');
+      const rows=XLSX.utils.sheet_to_json(book.Sheets[names[0]],{header:1,defval:''});
+      data.push(...parseRoster(rows,{year:$('#roster-year').value,grade:$('#roster-grade').value,classNo:$('#roster-class').value,courseClass:$('#roster-course').value}));
+    }
+    if(data.length>100)throw new Error('한 번에 100명까지 등록할 수 있습니다. 파일을 나눠 등록하세요.');
+    const keys=new Set();
+    for(const s of data){const key=[s.year,s.grade,s.classNo,s.number].join(':');if(keys.has(key))throw new Error('여러 파일에 같은 학번이 중복되어 있습니다. 파일을 확인하세요.');keys.add(key);}
+    const prepared=prepareRoster(data,state.students);
+    state.roster=prepared.students;state.rosterCodes=prepared.codes;state.rosterDownloaded=!prepared.codes.length;
+    $('#roster-preview').innerHTML='<div class="notice">'+files.length+'개 파일 · '+data.length+'명 확인 · 신규 '+prepared.codes.length+'명 / 기존 '+(data.length-prepared.codes.length)+'명 (기존 코드 유지)</div><div class="table-wrap"><table><thead><tr><th>학번</th><th>이름</th><th>수업 반</th></tr></thead><tbody>'+data.map((s) => '<tr><td>'+s.grade+'-'+s.classNo+'-'+s.number+'</td><td>'+esc(s.name)+'</td><td>'+esc(s.courseClass || '')+'</td></tr>').join('')+'</tbody></table></div><div class="actions">'+(prepared.codes.length?'<button data-action="roster-codes">신규 학생 접속 코드 명단 다운로드</button>':'')+'<button class="primary" data-action="import-roster" '+(prepared.codes.length?'disabled':'')+'>이 명단 등록</button></div><p class="hint">이름의 (공동)은 제외했습니다. 원래 학번과 수업 반은 별도로 저장합니다. 접속 코드 명단을 먼저 다운로드한 뒤 등록하세요. 원본 파일은 서버에 저장하지 않습니다.</p>';
+  }catch(err){toast(err.message);}
 }
 async function reports() {
   const [r,s,a] = await Promise.all([api('reports.list'),api('students.list'),api('assessments.list')]);
   state.reports = r.reports; state.students = s.students; state.assessments = a.assessments;
   $('#admin-content').innerHTML = '<div class="filters"><select id="report-assessment" aria-label="탐구 선택"><option value="">모든 탐구</option>' + a.assessments.map((v) => '<option value="' + v.id + '">' + esc(v.title) + '</option>').join('') + '</select><select id="report-status" aria-label="보고서 상태"><option value="">모든 상태</option>' +
     Object.entries(statuses).filter(([k]) => ['draft','submitted','approved','revision','rejected'].includes(k)).map(([k,v]) => '<option value="' + k + '">' + v + '</option>').join('') + '</select><button data-action="export-reports">보고서 JSON 다운로드</button></div><div id="report-summary"></div><div class="panel table-wrap" id="report-table"></div>';
+  $('#report-status').insertAdjacentHTML('afterend','<select id="report-course" aria-label="수업 반"><option value="">모든 수업 반</option>'+[...new Set(s.students.flatMap((v) => v.courseClasses || []))].sort().map((c) => '<option>'+esc(c)+'</option>').join('')+'</select>');
+  $('#report-course').onchange=renderReportTable;
   $('#report-assessment').onchange = renderReportTable; $('#report-status').onchange = renderReportTable; renderReportTable();
 }
 function renderReportTable() {
   const aid = $('#report-assessment').value, status = $('#report-status').value;
-  const reports = state.reports.filter((r) => (!aid || r.assessmentId === aid));
+  const course=$('#report-course').value;
+  const reports = state.reports.filter((r) => (!aid || r.assessmentId === aid) && (!course || (r.student.courseClasses || []).includes(course)));
   const a = state.assessments.find((v) => v.id === aid);
-  const pending = a ? state.students.filter((s) => s.active && s.year === a.year && !reports.some((r) => r.studentId === s.id)) : [];
+  const pending = a ? state.students.filter((s) => s.active && s.year === a.year && (!course || (s.courseClasses || []).includes(course)) && !reports.some((r) => r.studentId === s.id)) : [];
   $('#report-summary').innerHTML = '<div class="stats" style="margin-bottom:20px"><div><strong>' + reports.length + '</strong><small>작성 보고서</small></div><div><strong>' + reports.filter((r) => r.status==='submitted').length + '</strong><small>검토 대기</small></div>' + (a ? '<div><strong>' + pending.length + '</strong><small>미참여</small></div>' : '') + '</div>';
   $('#report-table').innerHTML = '<table><thead><tr><th>학생</th><th>탐구</th><th>상태</th><th>제출일</th><th>검토</th></tr></thead><tbody>' +
     reports.filter((r) => !status || r.status === status).map((r) => '<tr><td>' + r.student.grade + '-' + r.student.classNo + '-' + r.student.number + ' ' + esc(r.student.name) + '</td><td>' + esc(r.title) + '</td><td>' + tag(r.status) + '</td><td>' + date(r.submittedAt) + '</td><td><button data-review="' + r.id + '">보고서 보기</button>' + (r.status === 'approved' ? ' <button data-generate="' + r.id + '">전시본 만들기</button>' : '') + '</td></tr>').join('') + '</tbody></table>' +
@@ -245,7 +292,7 @@ async function assessments() {
     state.assessments.map((a) => '<article class="card"><div class="card-body">' + tag(a.status) + '<h3 style="margin-top:20px">' + esc(a.title) + '</h3><p>' + a.year + '학년도 · ' + a.fields.length + '항목<br>' + esc(a.subject) + '</p><button data-edit-assessment="' + a.id + '">설정 편집</button></div></article>').join('') + '</div>';
 }
 function assessmentForm(id) {
-  state.editAssessment = id ? clone(state.assessments.find((a) => a.id === id)) : { title:'',subject:'',category:'',description:'',guide:'',year:new Date().getFullYear(),status:'hidden',startAt:'',deadline:'',fields:[{id:'question',title:'탐구 질문',guide:'탐구하고 싶은 질문을 적어 주세요.',required:true,type:'text'}] };
+  state.editAssessment = id ? clone(state.assessments.find((a) => a.id === id)) : { title:'',subject:'',category:'',description:'',guide:'',year:(state.user.group?.year || new Date().getFullYear()),status:'hidden',startAt:'',deadline:'',fields:[{id:'question',title:'탐구 질문',guide:'탐구하고 싶은 질문을 적어 주세요.',required:true,type:'text'}] };
   const a = state.editAssessment;
   const localTime = (v) => v ? new Date(Date.parse(v) - new Date(v).getTimezoneOffset()*60000).toISOString().slice(0,16) : '';
   dialog('탐구 활동 설정', '<form id="assessment-form" class="stack"><div class="form-grid">' +
@@ -301,6 +348,7 @@ document.addEventListener('click', async (e) => {
     if(b.dataset.open){ location.hash=state.user?.role==='student'?'write/'+b.dataset.open:'lab';return;}
     if(b.dataset.step!==undefined){state.step=Number(b.dataset.step);renderStep();return;}
     if(b.dataset.deleteRef!==undefined){const r=state.saver.report;r.content[r.fields[state.step].id].splice(Number(b.dataset.deleteRef),1);changed();renderReferences();return;}
+    if(b.dataset.enterGroup){await switchGroup(b.dataset.enterGroup);location.hash='teacher';await admin();return;}
     if(b.dataset.tab){state.adminTab=b.dataset.tab;await admin();return;}
     if(b.dataset.review){review(b.dataset.review);return;}
     if(b.dataset.editAssessment){assessmentForm(b.dataset.editAssessment);return;}
@@ -345,6 +393,7 @@ document.addEventListener('click', async (e) => {
         b.disabled=true;
         if(!(await state.saver.flush()))throw new Error('서버 저장을 완료한 후 제출하세요.');
         {const r=state.saver.report;await api('report.submit',{id:r.id,version:r.version,content:r.content});state.saver.stop();state.saver=null;$('#modal').close();toast('최종 제출했습니다. 선생님의 검토를 기다려 주세요.');await route();}break;
+      case 'group-link':{const url=new URL(location.href);url.searchParams.set('group',state.groupId);url.hash='activities';await navigator.clipboard.writeText(url.href);toast('현재 그룹의 학생 접속 링크를 복사했습니다.');break;}
       case 'refresh-admin':await admin();break;
       case 'roster-template':download('학생명단-양식.csv','\uFEFF학년도,학년,반,번호,이름,접속코드\n','text/csv;charset=utf-8');break;
       case 'roster-codes':download('신규학생-접속코드.csv',rosterCSV(state.rosterCodes),'text/csv;charset=utf-8');state.rosterDownloaded=true;$('[data-action=import-roster]').disabled=false;break;

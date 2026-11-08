@@ -1,14 +1,30 @@
 /* Install with generated Domain.gs and Seed.gs. No Eco World bindings are used. */
 const LAB_COLUMNS = {
-  Students: ['id','year','grade','classNo','number','name','passwordHash','authVersion','active','createdAt'],
-  Assessments: ['id','title','subject','category','year','description','guide','startAt','deadline','status','version'],
-  AssessmentFields: ['id','assessmentId','title','guide','type','required','order','retired'],
-  Reports: ['id','studentId','assessmentId','title','fields','content','status','version','createdAt','updatedAt','submittedAt'],
-  Reviews: ['id','reportId','status','feedback','reviewer','createdAt','sequence','reportVersion'],
-  Publications: ['id','reportId','category','year','draft','version','visible','published','publishedVersion','publishedAt','createdAt'],
-  PublicationVersions: ['id','publicationId','version','content','createdAt'],
+  Students: ['id','year','grade','classNo','number','name','passwordHash','authVersion','active','createdAt','groupId','courseClasses'],
+  Assessments: ['id','title','subject','category','year','description','guide','startAt','deadline','status','version','groupId'],
+  AssessmentFields: ['id','assessmentId','title','guide','type','required','order','retired','groupId'],
+  Reports: ['id','studentId','assessmentId','title','fields','content','status','version','createdAt','updatedAt','submittedAt','groupId'],
+  Reviews: ['id','reportId','status','feedback','reviewer','createdAt','sequence','reportVersion','groupId'],
+  Publications: ['id','reportId','category','year','draft','version','visible','published','publishedVersion','publishedAt','createdAt','groupId'],
+  PublicationVersions: ['id','publicationId','version','content','createdAt','groupId'],
   Settings: ['id','value','expiresAt']
 };
+function labEnsureColumns_(sheet) {
+  Object.keys(LAB_COLUMNS).forEach((name) => {
+    let tab=sheet.getSheetByName(name);
+    if(!tab) tab=sheet.insertSheet(name);
+    const cols=LAB_COLUMNS[name];
+    if(tab.getLastRow()>0) {
+      const current=tab.getRange(1,1,1,cols.length).getValues()[0];
+      while(current.length && current[current.length-1]==='')current.pop();
+      if(!current.length || current.some((key,i) => key!==cols[i])) throw new Error(name+' 머리글이 다릅니다. 기존 데이터는 변경하지 않았습니다.');
+      if(current.length===cols.length) return;
+    }
+    // Append-only schema migration. Never clear or rewrite student/report rows.
+    tab.getRange(1,1,1,cols.length).setValues([cols]).setFontWeight('bold').setBackground('#eeeeee');
+    tab.setFrozenRows(1);
+  });
+}
 function setupLifeScienceLab() {
   const props = PropertiesService.getScriptProperties();
   const bootstrap = typeof labBootstrapConfig_ === 'function' ? labBootstrapConfig_() : null;
@@ -21,18 +37,8 @@ function setupLifeScienceLab() {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    Object.keys(LAB_COLUMNS).forEach((name) => {
-      let tab = sheet.getSheetByName(name);
-      if (!tab) tab = sheet.insertSheet(name);
-      const cols = LAB_COLUMNS[name];
-      if (tab.getLastRow() === 0) {
-        tab.getRange(1, 1, 1, cols.length).setValues([cols]).setFontWeight('bold').setBackground('#eeeeee');
-        tab.setFrozenRows(1);
-        tab.setColumnWidths(1, cols.length, 150);
-      } else if (JSON.stringify(tab.getRange(1, 1, 1, cols.length).getValues()[0]) !== JSON.stringify(cols)) {
-        throw new Error(name + ' 머리글이 다릅니다. 기존 데이터는 변경하지 않았습니다.');
-      }
-    });
+    labEnsureColumns_(sheet);
+    props.setProperty('LAB_SCHEMA_VERSION','2');
     const db = labStore_(sheet);
     if (!db.all('Assessments').some((a) => a.id === LAB_SEED.id)) {
       LabDomain.execute(db, 'assessment.save', LAB_SEED, { role: 'teacher' }, labContext_());
@@ -66,7 +72,9 @@ function doPost(e) {
     const cache = CacheService.getScriptCache();
     if (cache.get(req.nonce)) throw new Error('Replayed request');
     cache.put(req.nonce, '1', 120);
-    const db = labStore_(SpreadsheetApp.openById(props.getProperty('LAB_SPREADSHEET_ID')));
+    const sheet=SpreadsheetApp.openById(props.getProperty('LAB_SPREADSHEET_ID'));
+    if(props.getProperty('LAB_SCHEMA_VERSION')!=='2'){labEnsureColumns_(sheet);props.setProperty('LAB_SCHEMA_VERSION','2');}
+    const db = labStore_(sheet);
     const result = LabDomain.execute(db, req.action, req.payload, req.actor, labContext_());
     db.flush();
     SpreadsheetApp.flush();

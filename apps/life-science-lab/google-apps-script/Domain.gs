@@ -17,7 +17,8 @@ globalThis.LabDomain = (() => {
     if (!s || !s.active || s.authVersion !== actor.authVersion) fail(401, '로그인이 만료되었습니다.');
     return s;
   }
-  const publicStudent = (s) => ({ id: s.id, year: s.year, grade: s.grade, classNo: s.classNo, number: s.number, name: s.name, active: s.active });
+  const cleanName = (v) => text(v,80).replace(/[（(]\s*공동\s*[)）]/g,'').trim();
+  const publicStudent = (s) => ({ id: s.id, year: s.year, grade: s.grade, classNo: s.classNo, number: s.number, name: cleanName(s.name), active: s.active, courseClasses:s.courseClasses || [] });
   function assessment(db, id) {
     const a = find(db, 'Assessments', id);
     if (!a) fail(404, '탐구 활동을 찾을 수 없습니다.');
@@ -75,7 +76,7 @@ globalThis.LabDomain = (() => {
     }));
     return { title: '나의 생명과학 탐구', displayName: '익명의 연구자', summary: '', sections };
   }
-  function execute(db, action, p = {}, actor = {}, ctx) {
+  function executeScoped(db, action, p = {}, actor = {}, ctx) {
     const { now, uuid } = ctx;
     if (action === 'bootstrap') {
       return { assessments: db.all('Assessments').filter((a) => a.status !== 'hidden').map((a) => assessment(db, a.id)) };
@@ -86,7 +87,7 @@ globalThis.LabDomain = (() => {
     if (action === 'auth.lookup') {
       if (actor.role !== 'system') fail(403, '인증 경로 오류');
       return db.all('Students').find((s) => s.active && s.year === Number(p.year) && s.grade === Number(p.grade)
-        && s.classNo === Number(p.classNo) && s.number === Number(p.number) && s.name === text(p.name)) || null;
+        && s.classNo === Number(p.classNo) && s.number === Number(p.number) && cleanName(s.name) === cleanName(p.name)) || null;
     }
     if (action === 'auth.rate') {
       if (actor.role !== 'system') fail(403, '인증 경로 오류');
@@ -131,14 +132,17 @@ globalThis.LabDomain = (() => {
       if (!Array.isArray(p.students) || !p.students.length || p.students.length > 100) fail(400, '한 번에 1~100명씩 등록하세요.');
       const all = db.all('Students'), keys = new Set();
       const rows = p.students.map((v) => {
-        const s = { year: num(v.year, 2020, 2100), grade: num(v.grade, 1, 12), classNo: num(v.classNo, 1, 100), number: num(v.number, 1, 999), name: text(v.name, 40) };
+        const s = { year: num(v.year, 2020, 2100), grade: num(v.grade, 1, 12), classNo: num(v.classNo, 1, 100), number: num(v.number, 1, 999), name: cleanName(v.name) };
         const key = [s.year, s.grade, s.classNo, s.number].join(':');
         if (!s.name || keys.has(key)) fail(400, '이름 누락 또는 명단 내 중복 학번을 확인하세요.');
         keys.add(key);
         const old = all.find((v) => [v.year,v.grade,v.classNo,v.number].join(':') === key);
-        if (old && old.name !== s.name) fail(409, '이미 등록된 학번의 이름이 다릅니다. 기존 학생을 먼저 확인하세요.');
+        if (old && cleanName(old.name) !== s.name) fail(409, '이미 등록된 학번의 이름이 다릅니다. 기존 학생을 먼저 확인하세요.');
         if (!old && !/^[a-f0-9]{32}:[a-f0-9]{64}$/.test(v.passwordHash || '')) fail(400, '접속 코드가 필요합니다.');
-        return old || { ...s, id: uuid(), passwordHash: v.passwordHash, authVersion: 1, active: true, createdAt: now };
+        const courseClass = text(v.courseClass,80);
+        const courseClasses = [...new Set([...(old?.courseClasses || []),...(courseClass ? [courseClass] : [])])];
+        if (courseClasses.length>30) fail(400,'수업 반은 학생당 최대 30개입니다.');
+        return old ? {...old,name:s.name,courseClasses} : { ...s, courseClasses, id: uuid(), passwordHash: v.passwordHash, authVersion: 1, active: true, createdAt: now };
       });
       rows.forEach((s) => db.put('Students', s)); return { count: rows.length };
     }
@@ -215,6 +219,66 @@ globalThis.LabDomain = (() => {
       db.put('Publications', next); return next;
     }
     fail(404, '지원하지 않는 요청입니다.');
+  }
+  // All reads and writes below are tenant-scoped, including ID-based lookups.
+  // Historical rows without groupId belong only to the legacy group.
+  const legacy = {id:'legacy',year:2026,semester:'2',subject:'세포와 물질대사',school:'용인삼계고',title:'2026학년도 2학기 세포와 물질대사(용인삼계고)',authVersion:1};
+  const groupRecord = (db,id) => db.all('Settings').find((r) => r.id==='group:'+id)?.value || (id==='legacy' ? legacy : null);
+  const publicGroup = (g) => ({id:g.id,year:g.year,semester:g.semester,subject:g.subject,school:g.school,title:g.title});
+  function execute(db,action,p={},actor={},ctx) {
+    if (action==='groups.list') {
+      const saved=db.all('Settings').filter((r) => r.id.startsWith('group:')).map((r) => r.value);
+      return {groups:[...(saved.some((g) => g.id==='legacy') ? [] : [legacy]),...saved].map(publicGroup)};
+    }
+    if (action==='auth.group') {
+      if(actor.role!=='system') fail(403,'인증 경로 오류');
+      return groupRecord(db,p.groupId || 'legacy');
+    }
+    if(action==='auth.rate') return executeScoped(db,action,p,actor,ctx);
+    const groupId = actor.role && actor.role!=='system' ? (actor.groupId || 'legacy') : (p.groupId || 'legacy');
+    const group=groupRecord(db,groupId);
+    if(!group) fail(404,'그룹을 찾을 수 없습니다.');
+    if(actor.role && actor.role!=='system' && p.groupId && p.groupId!==groupId) fail(403,'로그인한 그룹과 요청한 그룹이 다릅니다.');
+    if(actor.role==='teacher' && !actor.owner && groupId!=='legacy' && actor.groupVersion!==group.authVersion) fail(401,'그룹 암호가 변경되었습니다. 다시 로그인하세요.');
+    if(['groups.create','groups.update','groups.enter'].includes(action)) {
+      teacher(actor);
+      if(action==='groups.enter') {
+        if(!actor.owner) fail(403,'전체 관리자만 다른 그룹으로 이동할 수 있습니다.');
+        const target=groupRecord(db,p.targetId);if(!target) fail(404,'그룹을 찾을 수 없습니다.');
+        return publicGroup(target);
+      }
+      if(action==='groups.create' && !actor.owner) fail(403,'전체 관리자만 그룹을 만들 수 있습니다.');
+      const id=action==='groups.create' ? ctx.uuid() : groupId;
+      const old=action==='groups.create' ? null : group;
+      const year=num(p.year,2020,2100),semester=text(p.semester,10),subject=text(p.subject,80),school=text(p.school,80);
+      if(!['1','2','여름','겨울'].includes(semester)||!subject||!school) fail(400,'학기·과목·학교를 입력하세요.');
+      if(action==='groups.update' && Number(p.version)!==old.authVersion) fail(409,'그룹 설정이 변경되었습니다. 새로고침하세요.');
+      if(action==='groups.create' && !p.passwordHash) fail(400,'그룹 교사 암호를 입력하세요.');
+      if(id==='legacy' && p.passwordHash) fail(400,'기존 연구실은 전체 관리자 암호를 사용합니다. 별도 암호는 새 그룹에서 설정하세요.');
+      if(p.passwordHash && !/^[a-f0-9]{32}:[a-f0-9]{64}$/.test(p.passwordHash)) fail(400,'암호 형식 오류');
+      const next={...old,id,year,semester,subject,school,title:year+'학년도 '+semester+'학기 '+subject+'('+school+')',passwordHash:p.passwordHash || old?.passwordHash || null,authVersion:(old?.authVersion || 0)+1};
+      db.put('Settings',{id:'group:'+id,value:next,expiresAt:null});
+      if(action==='groups.create') {
+        const seed=copy(globalThis.LAB_SEED);seed.id=ctx.uuid();seed.year=year;seed.subject=subject;
+        execute(db,'assessment.save',seed,{role:'teacher',owner:true,groupId:id},ctx);
+      }
+      return {...publicGroup(next),version:next.authVersion};
+    }
+    const scoped={
+      all:(table) => db.all(table).filter((r) => (r.groupId || 'legacy')===groupId),
+      put:(table,row) => {
+        const other=db.all(table).find((r) => r.id===row.id && (table!=='AssessmentFields'||r.assessmentId===row.assessmentId));
+        if(other && (other.groupId || 'legacy')!==groupId) fail(403,'다른 그룹의 자료를 변경할 수 없습니다.');
+        db.put(table,{...row,groupId});
+      },
+      replaceFields:(id,fields) => {
+        if(!scoped.all('Assessments').some((a) => a.id===id) && db.all('Assessments').some((a) => a.id===id)) fail(403,'다른 그룹의 탐구입니다.');
+        db.replaceFields(id,fields.map((f) => ({...f,groupId})));
+      }
+    };
+    const result=executeScoped(scoped,action,p,actor,ctx);
+    if(action==='me') return {...result,groupId,group:publicGroup(group),owner:!!actor.owner,groupVersion:group.authVersion};
+    return result;
   }
   return { execute, fieldSet, answers };
 })();

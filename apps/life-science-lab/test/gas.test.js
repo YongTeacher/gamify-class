@@ -60,6 +60,23 @@ test('Apps Script에서 실패한 명단 검증은 일부 학생만 저장하지
   assert.equal(g.ctx.doPost(g.request('students.import',{students})).status,400);
   assert.equal(g.tabs.get('Students').data.length,1);
 });
+test('구 스키마는 열만 확장하며 기존 학생·암호·보고서 행 보존',()=>{
+  const g=gas();
+  const s={year:2026,grade:2,classNo:1,number:1,name:'보존가상학생',passwordHash:'a'.repeat(32)+':'+ 'b'.repeat(64)};
+  assert.equal(g.ctx.doPost(g.request('students.import',{students:[s]})).ok,true);
+  const student=g.ctx.doPost(g.request('students.list',{})).result.students[0];
+  assert.equal(g.ctx.doPost(g.request('report.open',{assessmentId:'enzyme-structure'},{role:'student',id:student.id,authVersion:1})).ok,true);
+  for(const name of ['Students','Assessments','AssessmentFields','Reports','Reviews','Publications','PublicationVersions']){
+    const width=g.tabs.get(name).data[0].length-(name==='Students'?2:1);
+    g.tabs.get(name).data.forEach((r) => r.splice(width));
+  }
+  const before=structuredClone(g.tabs.get('Students').data[1]),report=structuredClone(g.tabs.get('Reports').data[1]);
+  g.props.delete('LAB_SCHEMA_VERSION');
+  assert.equal(g.ctx.doPost(g.request('bootstrap',{},{})).ok,true);
+  assert.deepEqual(g.tabs.get('Students').data[1],before);assert.deepEqual(g.tabs.get('Reports').data[1],report);
+  assert.equal(g.tabs.get('Students').data[0].at(-2),'groupId');
+  assert.equal(g.ctx.doPost(g.request('students.list',{})).result.students.length,1);
+});
 test('최초 수동 실행과 서버 초기화는 동일한 비공개 연결키를 유지',()=>{
   const g=gas(),secret=g.props.get('LAB_WEBHOOK_SECRET');
   g.ctx.labBootstrapConfig_=()=>({spreadsheetId:'separate-test-sheet',secret});
