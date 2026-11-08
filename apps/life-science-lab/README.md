@@ -102,7 +102,7 @@ cd D:/gamify_class/apps/life-science-lab
 npm run password
 ~~~
 
-콘솔에서 숨김 입력으로 12자 이상의 관리자 비밀번호를 받습니다.
+콘솔에서 숨김 입력으로 8자 이상의 관리자 비밀번호를 받습니다.
 출력된 해시와 세션키를 Cloudflare에 넣고 콘솔을 닫으세요.
 관리자 비밀번호 원문은 코드·시트·Git에 저장하지 않습니다.
 
