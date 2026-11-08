@@ -57,7 +57,7 @@ function doPost(e) {
     const bootstrap = typeof labBootstrapConfig_ === 'function' ? labBootstrapConfig_() : null;
     const secret = props.getProperty('LAB_WEBHOOK_SECRET') || bootstrap?.secret;
     if (!secret) throw new Error('Not configured');
-    const signature = Utilities.computeHmacSha256Signature(envelope.body, secret).map((v) => ((v + 256) % 256).toString(16).padStart(2, '0')).join('');
+    const signature = Utilities.computeHmacSha256Signature(envelope.body, secret, Utilities.Charset.UTF_8).map((v) => ((v + 256) % 256).toString(16).padStart(2, '0')).join('');
     if (!constantEqual_(signature, envelope.signature)) return labJson_({ ok: false, status: 403, error: '잘못된 서버 서명' });
     const req = JSON.parse(envelope.body);
     if (Math.abs(Date.now() - req.timestamp) > 60000 || !/^[a-f0-9]{32}$/.test(req.nonce)) throw new Error('Expired request');

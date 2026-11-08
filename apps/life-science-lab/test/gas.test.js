@@ -28,7 +28,7 @@ function gas() {
     SpreadsheetApp:{getActiveSpreadsheet:()=>sheet,openById:(id)=>{assert.equal(id,'separate-test-sheet');return sheet;},flush:()=>{}},
     PropertiesService:{getScriptProperties:()=>({getProperty:(k)=>props.get(k),setProperty:(k,v)=>props.set(k,v)})},
     LockService:{getScriptLock:()=>lock},CacheService:{getScriptCache:()=>({get:(k)=>nonces.get(k),put:(k,v)=>nonces.set(k,v)})},
-    Utilities:{getUuid:randomUUID,computeHmacSha256Signature:(body,secret)=>[...createHmac('sha256',secret).update(body).digest()].map((v)=>v>127?v-256:v)},
+    Utilities:{Charset:{UTF_8:'UTF-8'},getUuid:randomUUID,computeHmacSha256Signature:(body,secret,charset)=>{assert.equal(charset,'UTF-8');return [...createHmac('sha256',secret).update(body,'utf8').digest()].map((v)=>v>127?v-256:v);}},
     ContentService:{MimeType:{JSON:'json'},createTextOutput:(body)=>({setMimeType:()=>JSON.parse(body)})}
   });
   for(const file of ['seed.js','domain.js','google-apps-script/Code.gs'])vm.runInContext(readFileSync(new URL('../'+file,import.meta.url),'utf8'),ctx);

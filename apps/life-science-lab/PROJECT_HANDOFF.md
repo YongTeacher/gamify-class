@@ -2,6 +2,12 @@
 
 최종 갱신: 2026-11-08
 
+## 한글 요청 서명 오류 수정
+
+영문 요청은 통과하지만 한글 명단·그룹명 요청은 서버 서명 오류가 발생하는 것을 운영에서 재현했습니다.
+Apps Script의 computeHmacSha256Signature에 Utilities.Charset.UTF_8을 명시해 수정했습니다(운영 버전 6).
+Worker 전송 JSON도 ASCII escape + charset=UTF-8로 고정합니다. 인증키 교체나 학생 자료 초기화는 하지 않습니다.
+
 ## 학생 최초 PIN 등록
 
 새 명단의 코드 미지정 학생은 passwordHash=null로 등록합니다. 학생이 숫자 4자리를 두 번 입력하면

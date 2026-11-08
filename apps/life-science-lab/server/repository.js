@@ -8,9 +8,13 @@ export function sheetsRepository(env) {
       const url = new URL(env.LAB_SHEETS_URL);
       if (url.origin !== 'https://script.google.com' || !url.pathname.endsWith('/exec')) throw new Error('Invalid Apps Script endpoint');
       const body = JSON.stringify({ action, payload, actor, timestamp: Date.now(), nonce: randomHex() });
+      // Keep transport JSON encoding-independent. JSON.parse restores Unicode;
+      // the receiver explicitly uses UTF-8 for the same signed body string.
+      const envelope = JSON.stringify({ body, signature: await hmac(env.LAB_SHEETS_SECRET, body) })
+        .replace(/[\u007f-\uffff]/g, (c) => '\\u' + c.charCodeAt(0).toString(16).padStart(4,'0'));
       const response = await fetch(url, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body, signature: await hmac(env.LAB_SHEETS_SECRET, body) }),
+        method: 'POST', headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+        body: envelope,
         signal: AbortSignal.timeout(25000), redirect: 'follow'
       });
       let data;
