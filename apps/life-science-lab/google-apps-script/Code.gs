@@ -77,6 +77,12 @@ function doPost(e) {
     const db = labStore_(sheet);
     const result = LabDomain.execute(db, req.action, req.payload, req.actor, labContext_());
     db.flush();
+    if(req.action==='sheets.refresh') result.views=labRefreshViews_(sheet,db);
+    // Roster registration is already saved if this optional derived-view update fails.
+    // Never misreport a successful import as a failed student registration.
+    if(req.action==='students.import' && req.actor?.owner){
+      try{result.views=labRefreshViews_(sheet,db);}catch(error){result.sheetWarning='명단은 저장됐습니다. 한글 시트 새로고침을 실행하세요.';}
+    }
     SpreadsheetApp.flush();
     return labJson_({ ok: true, result });
   } catch (error) {

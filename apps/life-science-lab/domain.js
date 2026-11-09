@@ -134,6 +134,10 @@ globalThis.LabDomain = (() => {
       db.put('Reports', next); return next;
     }
     teacher(actor);
+    if(action==='sheets.refresh') {
+      if(!actor.owner)fail(403,'전체 관리자만 통합 구글 시트를 갱신할 수 있습니다.');
+      return {ok:true};
+    }
     if (action === 'students.list') return { students: db.all('Students').map(publicStudent) };
     if (action === 'students.import') {
       if (!Array.isArray(p.students) || !p.students.length || p.students.length > 100) fail(400, '한 번에 1~100명씩 등록하세요.');

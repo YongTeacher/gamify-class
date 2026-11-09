@@ -13,6 +13,7 @@ async function api(action, payload = {}) {
   let data;
   try { data = await response.json(); } catch { throw new Error('서버 연결을 확인해 주세요.'); }
   if (!response.ok) throw Object.assign(new Error(data.error || '요청 실패'), { status:response.status });
+  if(data.result?.sheetWarning)console.warn('한글 조회 시트 갱신이 필요합니다. 학생 명단 저장은 완료됐습니다.');
   return data.result;
 }
 function errorBox(message) { return '<div class="notice error">' + esc(message) + '</div>'; }
@@ -209,7 +210,7 @@ async function admin() {
   if (state.user?.role !== 'teacher') return login('teacher');
   main.innerHTML = '<div class="page-heading"><span class="eyebrow">TEACHER STUDIO</span><h1>탐구의 다음 단계를 함께.</h1><p class="muted">명단부터 피드백, 최종 전시까지 한곳에서 관리하세요.</p></div><div class="admin-tabs">' +
     [['reports','보고서 검토'],['students','학생 명단'],['assessments','탐구 활동 설정'],['publications','전시 관리'],['groups','그룹 관리']].map(([id,title]) => '<button data-tab="' + id + '" class="' + (id === state.adminTab ? 'active' : '') + '">' + title + '</button>').join('') +
-    '<button data-action="refresh-admin" class="ghost">↻ 새로고침</button></div><div id="admin-content"><p class="loading">불러오는 중…</p></div>';
+    (state.user.owner?'<button data-action="refresh-sheets">한글 시트 새로고침</button>':'')+'<button data-action="refresh-admin" class="ghost">↻ 새로고침</button></div><div id="admin-content"><p class="loading">불러오는 중…</p></div>';
   if (state.adminTab === 'groups') await groups();
   else if (state.adminTab === 'students') await students();
   else if (state.adminTab === 'assessments') await assessments();
@@ -418,9 +419,10 @@ document.addEventListener('click', async (e) => {
         {const r=state.saver.report;await api('report.submit',{id:r.id,version:r.version,content:r.content});state.saver.stop();state.saver=null;$('#modal').close();toast('최종 제출했습니다. 선생님의 검토를 기다려 주세요.');await route();}break;
       case 'group-link':{const url=new URL(location.href);url.searchParams.set('group',state.groupId);url.hash='activities';await navigator.clipboard.writeText(url.href);toast('현재 그룹의 학생 접속 링크를 복사했습니다.');break;}
       case 'refresh-admin':await admin();break;
+      case 'refresh-sheets':b.disabled=true;{const result=await api('sheets.refresh');toast(result.views?'구글 시트 한글 탭을 최신 내용으로 갱신했습니다.':'시트 갱신 요청을 완료했습니다.');b.disabled=false;}break;
       case 'roster-template':download('학생명단-양식.csv','\uFEFF학년도,학년,반,번호,이름,접속코드\n','text/csv;charset=utf-8');break;
       case 'roster-codes':download('신규학생-접속코드.csv',rosterCSV(state.rosterCodes),'text/csv;charset=utf-8');state.rosterDownloaded=true;$('[data-action=import-roster]').disabled=false;break;
-      case 'import-roster':if(!state.roster || !state.rosterDownloaded)throw new Error('명단과 접속 코드 다운로드를 먼저 확인하세요.');b.disabled=true;await api('students.import',{students:state.roster});state.roster=null;state.rosterCodes=null;toast('명단을 등록했습니다.');await students();break;
+      case 'import-roster':if(!state.roster || !state.rosterDownloaded)throw new Error('명단과 접속 코드 다운로드를 먼저 확인하세요.');b.disabled=true;const result=await api('students.import',{students:state.roster});state.roster=null;state.rosterCodes=null;await students();toast(result.sheetWarning || '명단을 등록했습니다.');break;
       case 'export-reports':download('탐구보고서-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(state.reports,null,2));break;
       case 'new-assessment':assessmentForm();break;
       case 'add-field':if(state.editAssessment.fields.length>=20)throw new Error('항목은 최대 20개입니다.');state.editAssessment.fields.push({id:'field_'+crypto.randomUUID().slice(0,8),title:'',guide:'',type:'text',required:true});renderFields();break;

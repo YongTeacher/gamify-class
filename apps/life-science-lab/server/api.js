@@ -3,6 +3,7 @@ import { sheetsRepository } from './repository.js';
 const STUDENT = new Set(['myReports','report.open','report.save','report.submit']);
 const ADMIN = new Set(['groups.create','groups.update','students.list','students.import','student.update','assessments.list','assessment.save','reports.list','review','publications.list','publication.generate','publication.save','publication.publish','publication.hide']);
 const PUBLIC = new Set(['groups.list','bootstrap','archive']);
+ADMIN.add('sheets.refresh');
 const json = (data, status = 200, headers = {}) => new Response(JSON.stringify(data), {
   status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...headers }
 });

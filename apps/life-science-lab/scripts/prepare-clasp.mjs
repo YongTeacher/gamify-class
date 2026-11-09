@@ -2,7 +2,7 @@ import { mkdir,copyFile,writeFile,readFile } from 'node:fs/promises';
 import { randomHex } from '../server/auth.js';
 const app=new URL('../',import.meta.url),staging=new URL('.qa/gas-project/',app);
 await mkdir(staging,{recursive:true});
-for(const name of ['Code.gs','Domain.gs','Seed.gs'])await copyFile(new URL('google-apps-script/'+name,app),new URL(name,staging));
+for(const name of ['Code.gs','Domain.gs','Seed.gs','Views.gs'])await copyFile(new URL('google-apps-script/'+name,app),new URL(name,staging));
 await writeFile(new URL('appsscript.json',staging),JSON.stringify({
   timeZone:'Asia/Seoul',exceptionLogging:'STACKDRIVER',runtimeVersion:'V8',
   oauthScopes:['https://www.googleapis.com/auth/spreadsheets'],
