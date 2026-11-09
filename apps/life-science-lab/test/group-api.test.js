@@ -20,8 +20,8 @@ test('그룹 교사 암호 로그인·권한·세션 만료를 실제 API로 검
   assert.equal((await request('groups.create',{groupId:id},login.cookie)).status,403);
   assert.equal((await request('students.list',{groupId:id},login.cookie)).body.result.students.length,0);
   const entered=await request('groups.enter',{targetId:id},root.cookie);assert.equal(entered.status,200);assert.equal(entered.body.result.groupId,id);
-  const changed=await request('groups.update',{groupId:id,year:2026,semester:'2',subject:'생명과학',school:'가상학교',password:'new-group-code',version:login.body.result.groupVersion},login.cookie);assert.equal(changed.status,200);
+  const changed=await request('groups.update',{groupId:id,year:2026,semester:'2',subject:'생명과학',school:'가상학교',password:'0000000',version:login.body.result.groupVersion},login.cookie);assert.equal(changed.status,200);
   assert.equal((await request('students.list',{groupId:id},login.cookie)).status,401);
-  assert.equal((await request('login',{role:'teacher',groupId:id,password:'new-group-code'})).status,200);
+  assert.equal((await request('login',{role:'teacher',groupId:id,password:'0000000'})).status,200);
   const listed=await request('groups.list');assert.ok(!JSON.stringify(listed.body).includes('password'));
 });

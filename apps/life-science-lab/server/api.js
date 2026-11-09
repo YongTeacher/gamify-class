@@ -64,7 +64,7 @@ export async function handle(request, env, injectedRepository) {
     if(action==='groups.create' || action==='groups.update') {
       delete payload.passwordHash;
       if(payload.password){
-        if(typeof payload.password!=='string' || payload.password.length<8 || payload.password.length>128) return json({error:'그룹 교사 암호는 8~128자로 지정하세요.'},400);
+        if(typeof payload.password!=='string' || payload.password.length<7 || payload.password.length>128) return json({error:'그룹 교사 암호는 7~128자로 지정하세요.'},400);
         payload.passwordHash=await passwordHash(payload.password);
       }
       delete payload.password;
