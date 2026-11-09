@@ -4,7 +4,7 @@ import { reportDocumentHTML, reportFileName } from './report-document.js';
 const $ = (s) => document.querySelector(s);
 const main = $('#main'), clone = (v) => structuredClone(v);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
-const state = { user:null, groups:[],groupId:new URL(location.href).searchParams.get('group') || 'legacy', assessments:[], works:[], reports:[], configured:false, saver:null, step:0, adminTab:'reports', students:[], publications:[] };
+const state = { user:null, groups:[],groupId:new URL(location.href).searchParams.get('group') || 'legacy', assessments:[], assessmentsGroup:null, assessmentError:'', assessmentRequest:null, groupsReady:false, restoringSession:true, works:[], reports:[], configured:false, saver:null, step:0, adminTab:'reports', students:[], publications:[] };
 const statuses = { draft:'작성 중', submitted:'검토 대기', approved:'승인됨', revision:'보완 요청', rejected:'반려', open:'운영 중', closed:'마감', hidden:'비공개' };
 const date = (v) => v ? new Date(v).toLocaleString('ko-KR', { timeZone:'Asia/Seoul', dateStyle:'short', timeStyle:'short' }) : '별도 안내';
 const tag = (s) => '<span class="tag">' + esc(statuses[s] || s) + '</span>';
@@ -29,36 +29,65 @@ function identity() {
     ? '<span>' + esc(state.user.name) + '</span><button class="small ghost" data-action="logout">로그아웃</button>'
     : '<a class="button small" href="#lab">로그인 ↗</a>';
   if(!$('#group-bar')) main.insertAdjacentHTML('beforebegin','<section id="group-bar" class="group-bar" aria-label="연구 그룹 선택"></section>');
+  $('#group-bar').hidden=!state.groupsReady;
   $('#group-bar').innerHTML='<label>연구 그룹<select id="group-select">'+state.groups.map((g) => '<option value="'+esc(g.id)+'" '+(g.id===state.groupId?'selected':'')+'>'+esc(g.title)+'</option>').join('')+'</select></label><button class="small" data-action="group-link">학생 접속 링크 복사</button>';
   $('#group-select').onchange=async(e) => {try{await switchGroup(e.target.value);}catch(err){toast(err.message);identity();}};
 }
 async function loadGroup() {
-  const [data,archive]=await Promise.all([api('bootstrap'),api('archive')]);state.assessments=data.assessments;state.works=archive.works;
+  const groupId=state.groupId;
+  if(state.assessmentsGroup===groupId)return;
+  if(state.assessmentRequest?.groupId===groupId)return state.assessmentRequest.promise;
+  state.assessmentError='';
+  const promise=api('bootstrap',{groupId}).then((data)=>{
+    if(state.groupId===groupId){state.assessments=data.assessments;state.assessmentsGroup=groupId;}
+  }).catch((error)=>{
+    if(state.groupId===groupId)state.assessmentError=error.message;
+    throw error;
+  }).finally(()=>{if(state.assessmentRequest?.groupId===groupId)state.assessmentRequest=null;});
+  state.assessmentRequest={groupId,promise};
+  return promise;
 }
 async function switchGroup(id) {
   if(state.saver && !(await state.saver.flush())) throw new Error('현재 보고서 저장을 완료한 뒤 그룹을 바꾸세요.');
   if(state.user?.owner) state.user=await api('groups.enter',{targetId:id});
   else if(state.user){if(!confirm('그룹을 바꾸면 로그아웃됩니다. 이동할까요?')){identity();return;}await api('logout');state.user=null;}
-  state.saver?.stop();state.saver=null;state.groupId=id;state.roster=null;state.rosterCodes=null;state.students=[];state.reports=[];state.publications=[];
+  state.saver?.stop();state.saver=null;state.groupId=id;state.roster=null;state.rosterCodes=null;state.students=[];state.reports=[];state.publications=[];state.works=[];state.assessments=[];state.assessmentsGroup=null;state.assessmentError='';
   const url=new URL(location.href);url.searchParams.set('group',id);url.hash='activities';history.replaceState(null,'',url);
-  await loadGroup();identity();await route();
+  identity();await route();
 }
 async function boot() {
   try {
     const health = await fetch('/api/lab/health').then((r) => r.json()); state.configured = health.configured;
-    if (state.configured) {
-      state.groups=(await api('groups.list')).groups;
-      if(!state.groups.some((g) => g.id===state.groupId))state.groupId='legacy';
-      try { state.user = await api('me'); } catch (e) { if (e.status !== 401) throw e; }
-      if(state.user?.groupId)state.groupId=state.user.groupId;
-      await loadGroup();
-    } else throw new Error('연결 준비');
+    if (!state.configured) throw new Error('연결 준비');
   } catch {
-    state.assessments = [clone(globalThis.LAB_SEED)];
+    state.assessments = [clone(globalThis.LAB_SEED)];state.assessmentsGroup=state.groupId;
     $('#connection').hidden = false;
     $('#connection').textContent = '연구소 연결 준비 중 · 탐구 안내를 먼저 둘러볼 수 있습니다. 로그인·서버 저장은 교사의 Google Sheets 연결 후 사용할 수 있습니다.';
   }
   identity(); await route();
+  if(!state.configured)return;
+  const initialGroup=state.groupId;
+  const [groupsResult,userResult]=await Promise.allSettled([api('groups.list'),api('me')]);
+  if(groupsResult.status==='fulfilled'){
+    state.groups=groupsResult.value.groups;state.groupsReady=true;
+    if(state.groupId===initialGroup&&!state.groups.some((g)=>g.id===state.groupId)){
+      state.groupId='legacy';state.assessments=[];state.assessmentsGroup=null;state.assessmentError='';
+    }
+  }else{
+    $('#connection').hidden=false;
+    $('#connection').textContent='연구 그룹을 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.';
+  }
+  let restored=false;
+  if(userResult.status==='fulfilled'&&!state.user){
+    state.user=userResult.value;restored=true;
+    if(state.user.groupId&&state.user.groupId!==state.groupId){state.groupId=state.user.groupId;state.assessments=[];state.assessmentsGroup=null;state.assessmentError='';}
+  }
+  state.restoringSession=false;
+  identity();
+  if($('#login-form .notice'))$('#login-form .notice').textContent=state.groups.find((g)=>g.id===state.groupId)?.title||'기존 연구실';
+  const page=location.hash.slice(1).split('/')[0]||'activities';
+  if(page==='activities')activities();
+  else if(restored)await route();
 }
 async function route() {
   try {
@@ -82,8 +111,14 @@ function scienceFigure() {
   return '<div class="science-figure" role="img" aria-label="생명과학 연구를 상징하는 분자 구조 개념 도식"><div class="figure-heading"><span>STRUCTURE &amp; FUNCTION</span><span class="figure-mark">LS / 01</span></div><svg viewBox="0 0 540 420" aria-hidden="true"><defs><pattern id="research-grid" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M30 0H0V30" fill="none" stroke="#809cc2" stroke-opacity=".09" stroke-width=".6"/></pattern><linearGradient id="fold-blue" x1="0" x2="1" y2=".7"><stop stop-color="#afd0ff"/><stop offset=".5" stop-color="#719cd6"/><stop offset="1" stop-color="#365f99"/></linearGradient></defs><rect width="540" height="420" fill="url(#research-grid)"/><g fill="none" stroke="#6887b4" stroke-width=".6" opacity=".3"><circle cx="265" cy="213" r="139"/><circle cx="265" cy="213" r="112" stroke-dasharray="2 7"/><path d="M95 213h340M265 65v295"/></g><g fill="none" stroke-linecap="round"><path d="M166 254c-60-47 9-129 53-98s-29 113 23 128 107-65 71-94-97 23-72 68 94 5 102-30-72-73-55-111 81 8 74 43-78 26-88 79 63 70 90 31" stroke="url(#fold-blue)" stroke-width="13" opacity=".95"/><path d="M168 252c-58-46 9-127 51-96s-28 109 23 124 102-63 68-88-91 23-67 63 86 4 96-29-68-70-54-108 75 10 72 41-79 24-86 78 58 66 89 29" stroke="#d2e2fa" stroke-width="1" opacity=".65"/><path d="M152 291l-34 24H77M350 134l42-30h70M320 288l46 42h93" stroke="#7596c2" stroke-width=".8"/></g><g fill="#99b8e1"><circle cx="152" cy="291" r="3"/><circle cx="350" cy="134" r="3"/><circle cx="320" cy="288" r="3"/></g><g fill="#91acd0" font-family="monospace" font-size="8" letter-spacing="1.2"><text x="77" y="330">MOLECULAR INSIGHT</text><text x="397" y="94">INQUIRY</text><text x="379" y="345">RESEARCH NOTE</text></g><g stroke="#7996be" stroke-width="1"><path d="M40 65v10m-5-5h10M490 350v10m-5-5h10"/></g></svg><div class="figure-caption"><span>LIFE SCIENCE / CONCEPT DIAGRAM</span><span>RESEARCH LAB</span></div></div>';
 }
 function activities() {
+  if(state.configured&&!state.restoringSession&&state.assessmentsGroup!==state.groupId&&!state.assessmentError){
+    const groupId=state.groupId;
+    void loadGroup().then(()=>{if(state.groupId===groupId&&(location.hash===''||location.hash==='#activities'))activities();}).catch(()=>{if(state.groupId===groupId&&(location.hash===''||location.hash==='#activities'))activities();});
+  }
+  const pending=state.configured&&state.assessmentsGroup!==state.groupId;
   main.innerHTML = '<section class="hero"><div class="hero-copy"><span class="eyebrow">LIFE SCIENCE RESEARCH LAB</span><h1>생명과학의 질문을,<br><em>연구의 기록으로.</em></h1><p>자료를 검토하고, 근거를 기록하며,<br>탐구의 결과를 하나의 연구로 완성합니다.</p><div class="actions"><a class="button primary" href="#lab">나의 연구실 입장 →</a><a class="button ghost" href="#archive">탐구 아카이브 ↗</a></div></div>' + scienceFigure() + '</section>' +
-    '<div class="section-heading"><div><p class="eyebrow">RESEARCH PROGRAMS</p><h2>탐구 프로그램</h2><p>주제별 연구 안내와 작성 항목을 확인하고 탐구를 시작하세요.</p></div><span class="tag">' + state.assessments.length + '개 탐구</span></div><div class="grid activity-grid">' +
+    '<div class="section-heading"><div><p class="eyebrow">RESEARCH PROGRAMS</p><h2>탐구 프로그램</h2><p>주제별 연구 안내와 작성 항목을 확인하고 탐구를 시작하세요.</p></div><span class="tag">' + (pending?'불러오는 중':state.assessments.length+'개 탐구') + '</span></div><div class="grid activity-grid">' +
+    (pending?'<article class="card"><div class="card-body"><h3>탐구 목록을 불러오는 중입니다.</h3><p>'+esc(state.assessmentError||'연구소에 먼저 입장하고 계셔도 됩니다.')+'</p>'+(state.assessmentError?'<button data-action="retry-assessments">다시 시도</button>':'')+'</div></article>':'') +
     state.assessments.map((a, i) => '<article class="card"><div class="card-art"><span>RESEARCH PROGRAM / ' + a.year + '</span><span class="research-number">' + String(i+1).padStart(2,'0') + '</span></div><div class="card-body"><div class="actions">' + tag(a.status) + '<small>' + esc(a.subject) + '</small></div><h3 style="margin-top:18px">' + esc(a.title) + '</h3><p>' + esc(a.description) + '</p><small>' + a.year + '학년도 · ' + a.fields.length + '개 연구 항목<br>시작 ' + date(a.startAt) + ' / 마감 ' + date(a.deadline) + '</small><div class="actions"><button class="primary" data-open="' + esc(a.id) + '">탐구 시작 →</button><button data-guide="' + esc(a.id) + '">수행평가 안내</button></div></div></article>').join('') +
     '<article class="card workflow-card"><div class="card-body"><span class="eyebrow">RESEARCH PROCESS</span><h3 style="margin-top:20px">탐구에서 전시까지</h3><p>질문과 근거가 쌓여 하나의 연구가 됩니다.</p><ol class="workflow-list"><li><span>01</span>탐구 질문 설정과 자료 조사</li><li><span>02</span>연구 노트 작성 및 제출</li><li><span>03</span>교사 검토와 연구 내용 보완</li><li><span>04</span>승인된 연구 결과의 아카이브 전시</li></ol><a href="#archive" class="button ghost">연구 아카이브 보기 ↗</a></div></article></div>';
 }
@@ -120,6 +155,7 @@ function pinDialog(id) {
 }
 async function lab() {
   if (!state.user || state.user.role !== 'student') return login('student');
+  main.innerHTML = '<div class="page-heading"><span class="eyebrow">MY LABORATORY</span><h1>나의 연구실</h1><p class="loading">보고서를 불러오는 중입니다…</p></div>';
   const data = await api('myReports'); state.reports = data.reports;
   main.innerHTML = '<div class="page-heading"><span class="eyebrow">MY LABORATORY</span><h1>' + esc(state.user.name) + '의 연구 노트</h1><p class="muted">어제의 질문에서 오늘의 발견으로. 저장한 곳부터 이어서 탐구하세요.</p></div><div class="grid">' +
     (data.reports.length ? data.reports.map((r) => '<article class="card"><div class="card-body">' + tag(r.status) + '<h3 style="margin-top:20px">' + esc(r.title) + '</h3><p>최근 저장 ' + date(r.updatedAt) + '</p>' + (r.review?.feedback ? '<div class="notice">선생님 피드백<br>' + esc(r.review.feedback) + '</div>' : '') + '<a class="button primary" href="#write/' + esc(r.assessmentId) + '">' + (['draft','revision'].includes(r.status) ? '이어 쓰기' : '보고서 확인') + ' →</a></div></article>').join('') : '<div class="empty"><h3>첫 연구 노트를 펼쳐 보세요.</h3><p>탐구 활동에서 주제를 선택하면<br>여기에 연구 노트가 생깁니다.</p><a class="button primary" href="#activities">탐구 고르기 →</a></div>') + '</div>';
@@ -131,6 +167,7 @@ function backup(report) {
 }
 async function editor(id) {
   if (state.user?.role !== 'student') return login('student');
+  main.innerHTML = '<div class="page-heading"><span class="eyebrow">RESEARCH NOTE</span><h1>연구 기록</h1><p class="loading">보고서를 불러오는 중입니다…</p></div>';
   const report = await api('report.open', { assessmentId:id });
   state.step = 0;
   state.saver = new ReportSaver(report, (r) => api('report.save', { id:r.id, version:r.version, content:r.content }),
@@ -189,6 +226,7 @@ function reportActions(r) {
   return '<div class="report-toolbar actions"><button type="button" data-action="download-report-pdf" class="primary">PDF 다운로드</button><button type="button" data-action="print-report">인쇄</button><span class="hint">A4 보고서로 출력됩니다.</span></div>';
 }
 async function archive() {
+  main.innerHTML = '<div class="page-heading"><span class="eyebrow">RESEARCH ARCHIVE</span><h1>탐구 아카이브</h1><p class="loading">공개된 탐구를 불러오는 중입니다…</p></div>';
   if (state.configured) { try { state.works = (await api('archive')).works; } catch (e) { toast(e.message); } }
   const works = state.works;
   main.innerHTML = '<div class="page-heading"><span class="eyebrow">A GROWING COLLECTION OF DISCOVERIES</span><h1>우리의 질문이 모이면,<br>하나의 전시가 됩니다.</h1><p class="muted">선생님의 검토와 공개 승인을 거친 탐구 작품을 만나 보세요.</p></div><div class="stats"><div><strong>' + works.length + '</strong><small>누적 공개 작품</small></div>' +
@@ -207,6 +245,7 @@ function infographic(w, compact = false) {
     (w.sections || []).map((s,i) => '<section class="info-block"><span class="eyebrow">RECORD ' + String(i+1).padStart(2,'0') + '</span><h3>' + esc(s.title) + '</h3><div class="prose">' + esc(s.body) + '</div></section>').join('') + '</div></article>';
 }
 async function work(id) {
+  main.innerHTML = '<div class="page-heading"><span class="eyebrow">RESEARCH ARCHIVE</span><h1>탐구 작품</h1><p class="loading">작품을 불러오는 중입니다…</p></div>';
   if (state.configured) state.works = (await api('archive')).works;
   const w = state.works.find((w) => w.id === id);
   main.innerHTML = '<div class="actions" style="margin-bottom:25px"><a href="#archive" class="button ghost">← 아카이브</a><button data-action="print">인쇄 / PDF 저장</button></div>' + (w ? infographic(w) : '<div class="empty">공개되지 않았거나 찾을 수 없는 작품입니다.</div>');
@@ -438,6 +477,7 @@ document.addEventListener('click', async (e) => {
         {const r=state.saver.report;await api('report.submit',{id:r.id,version:r.version,content:r.content});state.saver.stop();state.saver=null;$('#modal').close();toast('최종 제출했습니다. 선생님의 검토를 기다려 주세요.');await route();}break;
       case 'group-link':{const url=new URL(location.href);url.searchParams.set('group',state.groupId);url.hash='activities';await navigator.clipboard.writeText(url.href);toast('현재 그룹의 학생 접속 링크를 복사했습니다.');break;}
       case 'refresh-admin':await admin();break;
+      case 'retry-assessments':state.assessmentError='';activities();break;
       case 'refresh-sheets':b.disabled=true;{const result=await api('sheets.refresh');toast(result.views?'구글 시트 한글 탭을 최신 내용으로 갱신했습니다.':'시트 갱신 요청을 완료했습니다.');b.disabled=false;}break;
       case 'roster-template':download('학생명단-양식.csv','\uFEFF학년도,학년,반,번호,이름,접속코드\n','text/csv;charset=utf-8');break;
       case 'roster-codes':download('신규학생-접속코드.csv',rosterCSV(state.rosterCodes),'text/csv;charset=utf-8');state.rosterDownloaded=true;$('[data-action=import-roster]').disabled=false;break;

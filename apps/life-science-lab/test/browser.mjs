@@ -5,10 +5,23 @@ const browser=await chromium.launch({channel:'msedge',headless:true});
 const errors=[],base='http://localhost:8791/apps/life-science-lab/';
 const context=await browser.newContext({viewport:{width:1440,height:1000}});
 const page=await context.newPage();
+let releaseGroups;
+const groupsGate=new Promise((resolve)=>{releaseGroups=resolve;});
+let archiveRequests=0;
+await page.route('**/api/lab/rpc',async(route)=>{
+  const action=JSON.parse(route.request().postData()||'{}').action;
+  if(action==='groups.list')await groupsGate;
+  if(action==='archive')archiveRequests++;
+  await route.continue();
+});
 page.on('pageerror',(e)=>errors.push(e.message));
 page.on('dialog',(d)=>d.accept());
 try {
   await page.goto(base);await expect(page.locator('.hero')).toBeVisible();
+  releaseGroups();
+  await expect(page.locator('#group-bar')).toBeVisible();
+  await expect(page.locator('[data-open]').first()).toBeVisible();
+  if(archiveRequests!==0)throw new Error('첫 화면에서 아카이브를 불필요하게 요청했습니다.');
   await page.screenshot({path:'.qa/activities-desktop.png',fullPage:true});
   await page.locator('[data-open]').first().click();
   await page.locator('[name=year]').fill('2026');await page.locator('[name=grade]').fill('2');
