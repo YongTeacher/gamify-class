@@ -5,6 +5,11 @@ for (const file of ['index.html','styles.css','app.js','autosave.js','roster.js'
   await mkdir(new URL('./',target),{recursive:true});
   await copyFile(new URL(file,app),target);
 }
+for (const [source,destination] of [['report-document.js','report-document.js'],['node_modules/html2pdf.js/dist/html2pdf.bundle.min.js','vendor/html2pdf.bundle.min.js'],['node_modules/html2pdf.js/dist/html2pdf.bundle.min.js.LICENSE.txt','vendor/html2pdf.bundle.min.js.LICENSE.txt']]) {
+  const target = new URL('dist/'+destination,app);
+  await mkdir(new URL('./',target),{recursive:true});
+  await copyFile(new URL(source,app),target);
+}
 const fonts = new URL('dist/fonts/',app);
 await mkdir(fonts,{recursive:true});
 await copyFile(new URL('../../fonts/PretendardVariable.woff2',app),new URL('PretendardVariable.woff2',fonts));

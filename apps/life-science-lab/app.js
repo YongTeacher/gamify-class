@@ -1,5 +1,6 @@
 import { ReportSaver } from './autosave.js';
 import { parseRoster, prepareRoster, rosterCSV } from './roster.js';
+import { reportDocumentHTML, reportFileName } from './report-document.js';
 const $ = (s) => document.querySelector(s);
 const main = $('#main'), clone = (v) => structuredClone(v);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -181,7 +182,11 @@ function renderReferences() {
   $('#references').oninput = (e) => { if (e.target.dataset.ref === undefined) return; r.content[f.id][Number(e.target.dataset.ref)][e.target.dataset.key] = e.target.value; changed(); };
 }
 function reportHTML(r) {
-  return '<h2>' + esc(r.title) + '</h2>' + r.fields.map((f,i) => '<section class="preview-section"><h3>' + (i+1) + '. ' + esc(f.title) + '</h3><div class="prose">' + esc(f.type === 'references' ? (r.content[f.id] || []).map((v) => v.title + ' · ' + v.author + '\n' + v.source).join('\n\n') : (r.content[f.id] || '아직 작성하지 않았습니다.')) + '</div></section>').join('');
+  return reportDocumentHTML(r, r.student || state.user, state.user?.group || state.groups.find((g) => g.id === state.groupId));
+}
+function reportActions(r) {
+  state.previewReport = r;
+  return '<div class="report-toolbar actions"><button type="button" data-action="download-report-pdf" class="primary">PDF 다운로드</button><button type="button" data-action="print-report">인쇄</button><span class="hint">A4 보고서로 출력됩니다.</span></div>';
 }
 async function archive() {
   if (state.configured) { try { state.works = (await api('archive')).works; } catch (e) { toast(e.message); } }
@@ -300,7 +305,7 @@ function renderReportTable() {
 }
 function review(id) {
   const r = state.reports.find((v) => v.id === id);
-  dialog('보고서 검토 · ' + r.student.name, reportHTML(r) + (r.review ? '<div class="notice">최근 검토: ' + esc(r.review.feedback) + '</div>' : '') +
+  dialog('보고서 검토 · ' + r.student.name, reportActions(r) + reportHTML(r) + (r.review ? '<div class="notice">최근 검토: ' + esc(r.review.feedback) + '</div>' : '') +
     (r.status === 'submitted' ? '<form id="review-form" class="stack"><label>학생에게 보낼 피드백<textarea name="feedback" maxlength="4000" rows="4"></textarea></label><div class="actions"><button name="status" value="approved" class="primary">보고서 승인</button><button name="status" value="revision">보완 요청</button><button name="status" value="rejected" class="danger">반려</button></div><p class="hint">승인은 전시 공개가 아닙니다. 전시본을 확인한 후 별도로 공개하세요.</p></form>' : ''));
   if ($('#review-form')) $('#review-form').onsubmit = async (e) => {
     e.preventDefault(); const button = e.submitter; button.disabled = true;
@@ -410,7 +415,21 @@ document.addEventListener('click', async (e) => {
       }
       case 'preview-report':{
         const r=state.saver.report;
-        dialog('전체 보고서 미리보기',reportHTML(r)+(['draft','revision'].includes(r.status)?'<div class="notice">필수 항목과 출처를 확인하세요. 제출 후에는 교사가 보완을 요청해야 수정할 수 있습니다.</div><button class="primary" data-action="submit-report">최종 제출</button>':''));
+        dialog('전체 보고서 미리보기',reportActions(r)+reportHTML(r)+(['draft','revision'].includes(r.status)?'<div class="notice">필수 항목과 출처를 확인하세요. 제출 후에는 교사가 보완을 요청해야 수정할 수 있습니다.</div><button class="primary" data-action="submit-report">최종 제출</button>':''));
+        break;
+      }
+      case 'download-report-pdf':{
+        if(typeof html2pdf!=='function')throw new Error('PDF 도구를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.');
+        b.disabled=true;
+        await document.fonts.ready;
+        await html2pdf().set({margin:0,filename:reportFileName(state.previewReport,state.previewReport.student || state.user),image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css','legacy']}}).from($('#printable-report')).save();
+        b.disabled=false;
+        break;
+      }
+      case 'print-report':{
+        document.body.classList.add('printing-report');
+        window.addEventListener('afterprint',()=>document.body.classList.remove('printing-report'),{once:true});
+        window.print();
         break;
       }
       case 'submit-report':

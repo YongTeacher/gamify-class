@@ -38,7 +38,16 @@ try {
   await page.locator('[data-key=source]').fill('https://example.org/catalase');
   await page.locator('[data-action=retry-save]').click();await expect(page.locator('#save-status')).toContainText('서버에 저장 완료');
   await page.screenshot({path:'.qa/editor-desktop.png',fullPage:true});
-  await page.locator('[data-action=preview-report]').click();await page.locator('[data-action=submit-report]').click();
+  await page.locator('[data-action=preview-report]').click();
+  await expect(page.locator('#printable-report')).toContainText('가상연구자1');
+  await expect(page.locator('#printable-report')).toContainText('카탈레이스');
+  await page.screenshot({path:'.qa/report-preview-desktop.png',fullPage:true});
+  const reportDownload=page.waitForEvent('download');
+  await page.locator('[data-action=download-report-pdf]').click();
+  const pdf=await reportDownload;
+  if(!pdf.suggestedFilename().endsWith('.pdf'))throw new Error('보고서 PDF 파일명이 올바르지 않습니다.');
+  await pdf.saveAs('.qa/report-preview.pdf');
+  await page.locator('[data-action=submit-report]').click();
   await expect(page.locator('main .tag').first()).toContainText('검토 대기');
   await expect(page.locator('#answer')).toHaveAttribute('readonly','');
   await page.locator('[data-action=logout]').click();await page.locator('[data-nav=teacher]').click();

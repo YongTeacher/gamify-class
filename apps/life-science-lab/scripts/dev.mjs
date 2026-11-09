@@ -11,7 +11,7 @@ const env=demo?{ LAB_SESSION_SECRET:randomHex(32),LAB_ADMIN_HASH:await passwordH
 const f=demo?fixture():null;
 if(f)for(const s of f.db.all('Students'))f.db.put('Students',{...s,passwordHash:await passwordHash('student-demo-2026')});
 const repo=f?{execute:async(a,p,u)=>f.run(a,p,u || {})}:undefined;
-const allowed=new Set(['index.html','app.js','styles.css','seed.js','autosave.js','roster.js','vendor/xlsx.full.min.js']);
+const allowed=new Set(['index.html','app.js','styles.css','seed.js','autosave.js','roster.js','report-document.js','vendor/xlsx.full.min.js','vendor/html2pdf.bundle.min.js']);
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.woff2':'font/woff2'};
 http.createServer(async(req,res)=>{
   try{
@@ -25,7 +25,7 @@ http.createServer(async(req,res)=>{
     if(url.pathname==='/fonts/PretendardVariable.woff2')file=path.join(root,'fonts/PretendardVariable.woff2');
     else {
       const name=url.pathname.replace(/^\/apps\/life-science-lab\/?/,'').replace(/^\//,'')||'index.html';
-      if(!allowed.has(name)){res.writeHead(404);res.end('Not found');return;}file=path.join(app,name);
+      if(!allowed.has(name)){res.writeHead(404);res.end('Not found');return;}file=name==='vendor/html2pdf.bundle.min.js'?path.join(app,'node_modules/html2pdf.js/dist/html2pdf.bundle.min.js'):path.join(app,name);
     }
     res.writeHead(200,{'Content-Type':mime[path.extname(file)]||'application/octet-stream','Cache-Control':'no-store'});res.end(await readFile(file));
   }catch{res.writeHead(500);res.end('Preview error');}
