@@ -7,8 +7,6 @@
   <title>생명과학 탐구 연구소 · Gamify Class</title>
   <link rel="stylesheet" href="./styles.css">
   <script src="./seed.js" defer></script>
-  <script src="./vendor/xlsx.full.min.js" defer></script>
-  <script src="./vendor/html2pdf.bundle.min.js" defer></script>
   <script src="./app.js" type="module"></script>
 </head>
 <body>
@@ -22,7 +20,10 @@
     <div id="identity"><a href="#lab" class="button small">로그인 ↗</a></div>
   </header>
   <div id="connection" class="connection" hidden></div>
-  <main id="main" tabindex="-1"><p class="loading">연구소를 열고 있습니다…</p></main>
+  <main id="main" tabindex="-1">
+    <section class="hero"><div class="hero-copy"><span class="eyebrow">LIFE SCIENCE RESEARCH LAB</span><h1>생명과학의 질문을,<br><em>연구의 기록으로.</em></h1><p>자료를 검토하고, 근거를 기록하며,<br>탐구의 결과를 하나의 연구로 완성합니다.</p><div class="actions"><a class="button primary" href="#lab">나의 연구실 입장 →</a><a class="button ghost" href="#archive">탐구 아카이브 ↗</a></div></div><div class="science-figure" aria-hidden="true"><div class="figure-heading"><span>STRUCTURE &amp; FUNCTION</span><span class="figure-mark">LS / 01</span></div><svg viewBox="0 0 540 420"><g fill="none" stroke="#719cd6" stroke-width="10" stroke-linecap="round" opacity=".8"><path d="M160 280c-40-65 35-165 105-100s-23 155 50 115 95-105 42-150"/></g><circle cx="265" cy="210" r="145" fill="none" stroke="#719cd6" stroke-opacity=".25"/></svg><div class="figure-caption"><span>LIFE SCIENCE / CONCEPT DIAGRAM</span><span>RESEARCH LAB</span></div></div></section>
+    <div class="section-heading"><div><p class="eyebrow">RESEARCH PROGRAMS</p><h2>탐구 프로그램</h2></div><span class="tag">불러오는 중</span></div>
+  </main>
   <footer><a href="https://gamifyclass.pages.dev/apps/">← GAMIFY CLASS</a><span>탐구하고, 기록하고, 공유하는 생명과학 지식 아카이브</span><small>제작. 용인삼계고 교사 배성용</small></footer>
   <dialog id="modal" aria-labelledby="modal-title"><div class="dialog-head"><h2 id="modal-title"></h2><button id="close-modal" class="icon-button" aria-label="닫기">×</button></div><div id="modal-body"></div></dialog>
   <div id="toast" role="status" aria-live="polite" hidden></div>

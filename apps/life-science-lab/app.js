@@ -24,6 +24,20 @@ function download(name, data, type = 'application/json') {
   const url = URL.createObjectURL(new Blob([data], { type })), a = document.createElement('a');
   a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+const scriptRequests = new Map();
+function loadScript(src, ready) {
+  if(ready())return Promise.resolve();
+  if(scriptRequests.has(src))return scriptRequests.get(src);
+  const request = new Promise((resolve,reject) => {
+    const script=document.createElement('script');
+    script.src=src;script.async=true;
+    script.onload=() => {if(ready())resolve();else{script.remove();reject(new Error('필요한 도구를 시작하지 못했습니다. 다시 시도해 주세요.'));}};
+    script.onerror=() => {script.remove();reject(new Error('필요한 도구를 내려받지 못했습니다. 연결을 확인하고 다시 시도해 주세요.'));};
+    document.head.append(script);
+  }).catch((error) => {scriptRequests.delete(src);throw error;});
+  scriptRequests.set(src,request);
+  return request;
+}
 function identity() {
   $('#identity').innerHTML = state.user
     ? '<span>' + esc(state.user.name) + '</span><button class="small ghost" data-action="logout">로그아웃</button>'
@@ -56,6 +70,7 @@ async function switchGroup(id) {
   identity();await route();
 }
 async function boot() {
+  identity(); await route();
   try {
     const health = await fetch('/api/lab/health').then((r) => r.json()); state.configured = health.configured;
     if (!state.configured) throw new Error('연결 준비');
@@ -63,9 +78,11 @@ async function boot() {
     state.assessments = [clone(globalThis.LAB_SEED)];state.assessmentsGroup=state.groupId;
     $('#connection').hidden = false;
     $('#connection').textContent = '연구소 연결 준비 중 · 탐구 안내를 먼저 둘러볼 수 있습니다. 로그인·서버 저장은 교사의 Google Sheets 연결 후 사용할 수 있습니다.';
+    state.restoringSession=false;
+    if(!location.hash||location.hash==='#activities')activities();
+    return;
   }
-  identity(); await route();
-  if(!state.configured)return;
+  if($('#login-form button[type="submit"]'))$('#login-form button[type="submit"]').disabled=false;
   const initialGroup=state.groupId;
   const [groupsResult,userResult]=await Promise.allSettled([api('groups.list'),api('me')]);
   if(groupsResult.status==='fulfilled'){
@@ -115,7 +132,7 @@ function activities() {
     const groupId=state.groupId;
     void loadGroup().then(()=>{if(state.groupId===groupId&&(location.hash===''||location.hash==='#activities'))activities();}).catch(()=>{if(state.groupId===groupId&&(location.hash===''||location.hash==='#activities'))activities();});
   }
-  const pending=state.configured&&state.assessmentsGroup!==state.groupId;
+  const pending=state.restoringSession||(state.configured&&state.assessmentsGroup!==state.groupId);
   main.innerHTML = '<section class="hero"><div class="hero-copy"><span class="eyebrow">LIFE SCIENCE RESEARCH LAB</span><h1>생명과학의 질문을,<br><em>연구의 기록으로.</em></h1><p>자료를 검토하고, 근거를 기록하며,<br>탐구의 결과를 하나의 연구로 완성합니다.</p><div class="actions"><a class="button primary" href="#lab">나의 연구실 입장 →</a><a class="button ghost" href="#archive">탐구 아카이브 ↗</a></div></div>' + scienceFigure() + '</section>' +
     '<div class="section-heading"><div><p class="eyebrow">RESEARCH PROGRAMS</p><h2>탐구 프로그램</h2><p>주제별 연구 안내와 작성 항목을 확인하고 탐구를 시작하세요.</p></div><span class="tag">' + (pending?'불러오는 중':state.assessments.length+'개 탐구') + '</span></div><div class="grid activity-grid">' +
     (pending?'<article class="card"><div class="card-body"><h3>탐구 목록을 불러오는 중입니다.</h3><p>'+esc(state.assessmentError||'연구소에 먼저 입장하고 계셔도 됩니다.')+'</p>'+(state.assessmentError?'<button data-action="retry-assessments">다시 시도</button>':'')+'</div></article>':'') +
@@ -302,7 +319,8 @@ async function readRoster(e) {
   state.roster = null; state.rosterCodes=null; $('#roster-preview').innerHTML = '';
   try {
     const files=Array.from(e.target.files); if(!files.length)return;
-    if(!window.XLSX)throw new Error('엑셀 읽기 모듈을 불러오지 못했습니다.');
+    $('#roster-preview').textContent='명단 파일을 준비하는 중입니다…';
+    await loadScript('./vendor/xlsx.full.min.js',()=>!!window.XLSX);
     let data=[];
     for(const file of files) {
       if(file.size>5*1024*1024)throw new Error('5MB 이하의 명단 파일을 선택하세요.');
@@ -320,7 +338,7 @@ async function readRoster(e) {
     const newCount=data.filter((s)=>!known.has([s.year,s.grade,s.classNo,s.number].join(':'))).length;
     state.roster=prepared.students;state.rosterCodes=prepared.codes;state.rosterDownloaded=!prepared.codes.length;
     $('#roster-preview').innerHTML='<div class="notice">'+files.length+'개 파일 · '+data.length+'명 확인 · 신규 '+newCount+'명 / 기존 '+(data.length-newCount)+'명 (기존 코드 유지)</div><div class="table-wrap"><table><thead><tr><th>학번</th><th>이름</th><th>수업 반</th></tr></thead><tbody>'+data.map((s) => '<tr><td>'+s.grade+'-'+s.classNo+'-'+s.number+'</td><td>'+esc(s.name)+'</td><td>'+esc(s.courseClass || '')+'</td></tr>').join('')+'</tbody></table></div><div class="actions">'+(prepared.codes.length?'<button data-action="roster-codes">신규 학생 접속 코드 명단 다운로드</button>':'')+'<button class="primary" data-action="import-roster" '+(prepared.codes.length?'disabled':'')+'>이 명단 등록</button></div><p class="hint">이름의 (공동)·(위탁)은 제외했습니다. 원래 학번과 수업 반은 별도로 저장합니다. 새 학생은 첫 접속에서 PIN 등록을 선택해 숫자 4자리를 정하세요. 코드가 직접 입력된 파일만 코드 명단을 먼저 다운로드하세요. 원본 파일은 서버에 저장하지 않습니다.</p>';
-  }catch(err){toast(err.message);}
+  }catch(err){e.target.value='';$('#roster-preview').textContent=err.message;toast(err.message);}
 }
 async function reports() {
   const [r,s,a] = await Promise.all([api('reports.list'),api('students.list'),api('assessments.list')]);
@@ -458,11 +476,12 @@ document.addEventListener('click', async (e) => {
         break;
       }
       case 'download-report-pdf':{
-        if(typeof html2pdf!=='function')throw new Error('PDF 도구를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.');
         b.disabled=true;
-        await document.fonts.ready;
-        await html2pdf().set({margin:0,filename:reportFileName(state.previewReport,state.previewReport.student || state.user),image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css','legacy']}}).from($('#printable-report')).save();
-        b.disabled=false;
+        try {
+          await loadScript('./vendor/html2pdf.bundle.min.js',()=>typeof globalThis.html2pdf==='function');
+          await document.fonts.ready;
+          await html2pdf().set({margin:0,filename:reportFileName(state.previewReport,state.previewReport.student || state.user),image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css','legacy']}}).from($('#printable-report')).save();
+        } finally { b.disabled=false; }
         break;
       }
       case 'print-report':{

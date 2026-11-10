@@ -10,6 +10,7 @@ try{
   await page.locator('#group-create button').click();
   await expect(page.locator('#roster-file')).toBeVisible();
   await expect(page.locator('#roster-year')).toHaveValue('2027');
+  await page.addScriptTag({url:'http://localhost:8791/apps/life-science-lab/vendor/xlsx.full.min.js'});
   const groupId=await page.locator('#group-select').inputValue();expect(groupId).not.toBe('legacy');
   const files=[];
   for(const [number,course] of [[7,'2-1'],[8,'2-2']]){

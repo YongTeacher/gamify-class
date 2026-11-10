@@ -5,19 +5,26 @@ const browser=await chromium.launch({channel:'msedge',headless:true});
 const errors=[],base='http://localhost:8791/apps/life-science-lab/';
 const context=await browser.newContext({viewport:{width:1440,height:1000}});
 const page=await context.newPage();
+let releaseHealth;
+const healthGate=new Promise((resolve)=>{releaseHealth=resolve;});
 let releaseGroups;
 const groupsGate=new Promise((resolve)=>{releaseGroups=resolve;});
 let archiveRequests=0;
+const vendorRequests=[];
+await page.route('**/api/lab/health',async(route)=>{await healthGate;await route.continue();});
 await page.route('**/api/lab/rpc',async(route)=>{
   const action=JSON.parse(route.request().postData()||'{}').action;
   if(action==='groups.list')await groupsGate;
   if(action==='archive')archiveRequests++;
   await route.continue();
 });
+page.on('request',(request)=>{if(request.url().includes('/vendor/'))vendorRequests.push(request.url());});
 page.on('pageerror',(e)=>errors.push(e.message));
 page.on('dialog',(d)=>d.accept());
 try {
   await page.goto(base);await expect(page.locator('.hero')).toBeVisible();
+  if(vendorRequests.length)throw new Error('첫 화면에서 엑셀·PDF 도구를 불필요하게 요청했습니다.');
+  releaseHealth();
   releaseGroups();
   await expect(page.locator('#group-bar')).toBeVisible();
   await expect(page.locator('[data-open]').first()).toBeVisible();
@@ -96,6 +103,7 @@ try {
   await expect(page.locator('#works')).toContainText('첫 번째 발견');
   // Exercise the actual browser Excel reader and dynamic assessment editor.
   await page.locator('[data-nav=teacher]').click();await page.locator('[data-tab=students]').click();
+  await page.addScriptTag({url:base+'vendor/xlsx.full.min.js'});
   for (const [format,number] of [['csv',3],['xlsx',4],['xls',5]]) {
     const bytes=await page.evaluate(({format,number})=>{
       const sheet=XLSX.utils.aoa_to_sheet([['학년도','학년','반','번호','이름','접속코드'],[2026,2,1,number,'파일가상학생'+number,'test-code-2026']]);
