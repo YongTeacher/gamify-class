@@ -24,6 +24,52 @@ function download(name, data, type = 'application/json') {
   const url = URL.createObjectURL(new Blob([data], { type })), a = document.createElement('a');
   a.href = url; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+function studentAccessUrl() {
+  const url = new URL(location.href);
+  url.searchParams.set('group', state.groupId);
+  url.hash = 'lab';
+  return url.href;
+}
+async function copyText(value) {
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
+  const input = document.createElement('textarea');
+  input.value = value; input.readOnly = true; input.style.position = 'fixed'; input.style.opacity = '0';
+  document.body.append(input); input.select();
+  const copied = document.execCommand('copy'); input.remove();
+  if (!copied) throw new Error('주소를 복사하지 못했습니다. 주소를 길게 눌러 복사해 주세요.');
+}
+function makeQrCanvas(value, generator) {
+  const code = generator(0, 'M');
+  code.addData(value, 'Byte'); code.make();
+  const cells = code.getModuleCount(), quiet = 4, scale = Math.max(4, Math.floor(232 / (cells + quiet * 2)));
+  const size = (cells + quiet * 2) * scale, canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size; canvas.className = 'login-qr-canvas';
+  canvas.setAttribute('role', 'img'); canvas.setAttribute('aria-label', '현재 연구 그룹 학생 접속 QR코드');
+  const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, size, size); ctx.fillStyle = '#0b1c36';
+  for (let row = 0; row < cells; row++) for (let col = 0; col < cells; col++) {
+    if (code.isDark(row, col)) ctx.fillRect((col + quiet) * scale, (row + quiet) * scale, scale, scale);
+  }
+  return canvas;
+}
+let qrModuleRequest;
+async function renderLoginQr() {
+  const holder = $('#login-qr-image'); if (!holder) return;
+  holder.textContent = 'QR코드 생성 중…';
+  qrModuleRequest ||= import('./vendor/qrcode.mjs');
+  const generator = (await qrModuleRequest).default;
+  if (!holder.isConnected) return;
+  const url = studentAccessUrl(), canvas = makeQrCanvas(url, generator);
+  holder.replaceChildren(canvas); holder.dataset.url = url;
+  $('#login-share-url').textContent = url;
+}
+function qrBlob() {
+  const canvas = $('.login-qr-canvas');
+  if (!canvas) return Promise.reject(new Error('QR코드를 먼저 다시 열어 주세요.'));
+  return new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('QR 이미지를 만들지 못했습니다.')), 'image/png'));
+}
+function loginSharePanel() {
+  return '<section class="login-qr-panel" aria-labelledby="login-qr-title"><div><p class="eyebrow">MOBILE ACCESS</p><h2 id="login-qr-title">휴대전화로 바로 접속</h2><p>카메라로 QR코드를 스캔하면 현재 연구 그룹의 학생 로그인 화면이 열립니다.</p></div><div id="login-qr-image" class="login-qr-image" aria-live="polite"></div><code id="login-share-url" class="login-share-url"></code><div class="login-qr-actions"><button type="button" data-action="copy-qr">QR 복사</button><button type="button" data-action="download-qr">PNG 다운로드</button><button type="button" data-action="copy-login-url">주소 복사</button></div></section>';
+}
 const scriptRequests = new Map();
 function loadScript(src, ready) {
   if(ready())return Promise.resolve();
@@ -142,7 +188,7 @@ function activities() {
 function login(role) {
   const teacher = role === 'teacher';
   const first=!teacher && !!state.pinSetup;
-  main.innerHTML = '<section class="login-layout"><div class="login-story"><p class="eyebrow">' + (teacher ? 'TEACHER STUDIO' : 'MY RESEARCH NOTE') + '</p><h1>' + (teacher ? '함께 자라는<br>탐구를 위해.' : '오늘의 질문을<br>기록해 볼까요?') + '</h1><p>' + (teacher ? '학생의 연구 과정을 살피고,<br>새로운 발견이 전시가 되도록 도와주세요.' : '선생님이 등록한 정보와<br>개별 접속 코드로 연구실에 입장하세요.') + '</p></div><form id="login-form" class="login-form stack"><h2>' + (teacher ? '교사 로그인' : '학생 로그인') + '</h2>' +
+  main.innerHTML = '<section class="login-layout"><div class="login-story"><p class="eyebrow">' + (teacher ? 'TEACHER STUDIO' : 'MY RESEARCH NOTE') + '</p><h1>' + (teacher ? '함께 자라는<br>탐구를 위해.' : '오늘의 질문을<br>기록해 볼까요?') + '</h1><p>' + (teacher ? '학생의 연구 과정을 살피고,<br>새로운 발견이 전시가 되도록 도와주세요.' : '선생님이 등록한 정보와<br>개별 접속 코드로 연구실에 입장하세요.') + '</p>' + (teacher ? '' : loginSharePanel()) + '</div><form id="login-form" class="login-form stack"><h2>' + (teacher ? '교사 로그인' : '학생 로그인') + '</h2>' +
     (teacher ? '' : '<div class="form-grid"><label>학년도<input name="year" type="number" min="2020" max="2100" value="' + (state.groups.find((g) => g.id===state.groupId)?.year || new Date().getFullYear()) + '" required></label><label>학년<input name="grade" type="number" min="1" max="12" required></label><label>반<input name="classNo" type="number" min="1" max="100" required></label><label>번호<input name="number" type="number" min="1" max="999" required></label><label class="span-all">이름<input name="name" autocomplete="username" required></label></div>') +
     '<div><label for="login-password">' + (teacher ? '관리자 비밀번호' : '개인 접속 코드') + '</label><div class="password-field"><input id="login-password" name="password" type="password" minlength="' + (teacher && state.groupId !== 'legacy' ? '7' : '8') + '" maxlength="128" autocomplete="current-password" required><button type="button" data-action="toggle-password" aria-controls="login-password" aria-label="비밀번호 표시" aria-pressed="false">보기</button></div></div><button type="submit" class="primary" ' + (!state.configured ? 'disabled' : '') + '>연구소 입장 →</button><div id="login-error" role="alert"></div><p class="hint">' + (state.configured ? '학생 명단과 보고서는 이 연구소 안에서만 관리됩니다.' : '교사의 저장소 연결이 완료되면 로그인할 수 있습니다.') + '</p><a href="#' + (teacher ? 'lab' : 'teacher') + '" class="hint">' + (teacher ? '학생으로 참여하기 →' : '교사 관리실 →') + '</a></form></section>';
   $('#login-form').onsubmit = async (e) => {
@@ -152,6 +198,7 @@ function login(role) {
   };
   $('#login-form h2').insertAdjacentHTML('afterend','<p class="notice">'+esc(state.groups.find((g) => g.id===state.groupId)?.title || '기존 연구실')+'</p>');
   if(!teacher){
+    void renderLoginQr().catch(() => { if ($('#login-qr-image')) $('#login-qr-image').textContent='QR코드를 만들지 못했습니다. 새로고침해 주세요.'; });
     const input=$('#login-password');input.minLength=4;
     $('label[for="login-password"]').textContent=first?'처음 사용할 PIN (숫자 4자리)':'개인 PIN 또는 기존 접속 코드';
     if(first){input.maxLength=4;input.pattern='[0-9]{4}';input.inputMode='numeric';input.autocomplete='new-password';
@@ -219,7 +266,7 @@ function renderStep() {
   progress();
   $('#editor-field').innerHTML = '<span class="eyebrow">STEP ' + String(state.step+1).padStart(2,'0') + ' / ' + r.fields.length + '</span><h2>' + esc(f.title) + (f.required ? ' <small style="font-size:12px">필수</small>' : '') + '</h2><p class="editor-guide">' + esc(f.guide) + '</p>' +
     (f.type === 'references' ? '<div id="references"></div>' + (!locked ? '<button data-action="add-reference">+ 참고 자료 추가</button>' : '') :
-      '<label><span class="hint">탐구 내용</span><textarea id="answer" maxlength="6000" ' + (locked ? 'readonly' : '') + ' placeholder="찾은 근거를 바탕으로 나의 생각을 적어 보세요.">' + esc(r.content[f.id] || '') + '</textarea></label>');
+      '<label><span class="hint">탐구 내용</span><textarea id="answer" data-student-answer maxlength="6000" ' + (locked ? 'readonly' : '') + ' placeholder="찾은 근거를 바탕으로 나의 생각을 직접 적어 보세요. 복사·붙여넣기는 사용할 수 없습니다.">' + esc(r.content[f.id] || '') + '</textarea></label>');
   if (f.type === 'references') renderReferences(); else $('#answer').oninput = () => { r.content[f.id] = $('#answer').value; changed(); };
   $('[data-action="prev"]').disabled = state.step === 0;
   $('[data-action="next"]').disabled = state.step === r.fields.length - 1;
@@ -235,6 +282,15 @@ function renderReferences() {
   $('#references').innerHTML = list.map((v,i) => '<div class="reference-row"><strong>자료 ' + (i+1) + '</strong>' + [['title','자료 제목',300],['author','저자 또는 기관',200],['source','URL 또는 서지 정보',800]].map(([key,label,max]) => '<label>' + label + '<input data-ref="' + i + '" data-key="' + key + '" maxlength="' + max + '" value="' + esc(v[key]) + '" ' + (locked ? 'readonly' : '') + '></label>').join('') + (!locked ? '<button class="small ghost" data-delete-ref="' + i + '">자료 삭제</button>' : '') + '</div>').join('') || '<p class="hint">아래 버튼으로 참고 자료를 추가하세요.</p>';
   $('#references').oninput = (e) => { if (e.target.dataset.ref === undefined) return; r.content[f.id][Number(e.target.dataset.ref)][e.target.dataset.key] = e.target.value; changed(); };
 }
+function blockAnswerTransfer(e) {
+  if (state.user?.role !== 'student' || !e.target.closest?.('[data-student-answer]') || e.target.readOnly) return;
+  e.preventDefault();
+  toast('학생 탐구 내용은 복사하거나 붙여넣을 수 없습니다. 직접 작성해 주세요.');
+}
+for (const type of ['copy','cut','paste','drop','contextmenu']) document.addEventListener(type, blockAnswerTransfer);
+document.addEventListener('beforeinput', (e) => {
+  if (['insertFromPaste','insertFromDrop'].includes(e.inputType)) blockAnswerTransfer(e);
+});
 function reportHTML(r) {
   return reportDocumentHTML(r, r.student || state.user, state.user?.group || state.groups.find((g) => g.id === state.groupId));
 }
@@ -454,9 +510,19 @@ document.addEventListener('click', async (e) => {
         b.setAttribute('aria-label',visible?'비밀번호 숨기기':'비밀번호 표시');
         break;
       }
+      case 'copy-login-url':
+        await copyText(studentAccessUrl());toast('학생 접속 주소를 복사했습니다.');break;
+      case 'copy-qr':{
+        if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') throw new Error('이 브라우저는 QR 이미지 복사를 지원하지 않습니다. PNG 다운로드를 이용해 주세요.');
+        const blob=await qrBlob();await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);toast('QR 이미지를 복사했습니다.');break;
+      }
+      case 'download-qr':{
+        const blob=await qrBlob(),url=URL.createObjectURL(blob),a=document.createElement('a');
+        a.href=url;a.download='생명과학-연구소-학생접속-QR.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);break;
+      }
       case 'logout':
         if(state.saver && !(await state.saver.flush()) && !confirm('미저장 내용은 이 기기에 복구본으로 남습니다. 로그아웃할까요?'))return;
-        state.saver?.stop();state.saver=null;await api('logout');state.user=null;state.reports=[];state.students=[];identity();await route();break;
+        b.disabled=true;state.saver?.stop();state.saver=null;await api('logout');state.user=null;state.reports=[];state.students=[];await route();identity();break;
       case 'prev':state.step--;renderStep();break;
       case 'next':state.step++;renderStep();break;
       case 'add-reference':{
@@ -494,7 +560,7 @@ document.addEventListener('click', async (e) => {
         b.disabled=true;
         if(!(await state.saver.flush()))throw new Error('서버 저장을 완료한 후 제출하세요.');
         {const r=state.saver.report;await api('report.submit',{id:r.id,version:r.version,content:r.content});state.saver.stop();state.saver=null;$('#modal').close();toast('최종 제출했습니다. 선생님의 검토를 기다려 주세요.');await route();}break;
-      case 'group-link':{const url=new URL(location.href);url.searchParams.set('group',state.groupId);url.hash='activities';await navigator.clipboard.writeText(url.href);toast('현재 그룹의 학생 접속 링크를 복사했습니다.');break;}
+      case 'group-link':await copyText(studentAccessUrl());toast('현재 그룹의 학생 접속 링크를 복사했습니다.');break;
       case 'refresh-admin':await admin();break;
       case 'retry-assessments':state.assessmentError='';activities();break;
       case 'refresh-sheets':b.disabled=true;{const result=await api('sheets.refresh');toast(result.views?'구글 시트 한글 탭을 최신 내용으로 갱신했습니다.':'시트 갱신 요청을 완료했습니다.');b.disabled=false;}break;

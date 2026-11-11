@@ -5,3 +5,9 @@ eco-quest/apps/eco-map/vendor/xlsx.full.min.js without changes. It runs locally 
 browser to read CSV / XLS / XLSX; student files are not sent to an external parser.
 The upstream copyright notice is retained inside the distribution.
 Only small teacher-selected roster files (maximum 5 MB, 100 records) are accepted.
+
+# QR code generator
+
+qrcode.mjs is qrcode-generator 1.4.4 by Kazuhiko Arase (MIT), with a single
+ES module export appended. It creates group login QR codes entirely in the
+browser, so student URLs are not sent to an external QR service.

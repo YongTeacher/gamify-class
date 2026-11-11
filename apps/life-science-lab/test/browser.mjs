@@ -31,6 +31,13 @@ try {
   if(archiveRequests!==0)throw new Error('첫 화면에서 아카이브를 불필요하게 요청했습니다.');
   await page.screenshot({path:'.qa/activities-desktop.png',fullPage:true});
   await page.locator('[data-open]').first().click();
+  await expect(page.locator('.login-qr-canvas')).toBeVisible();
+  await expect(page.locator('[data-action=copy-qr]')).toBeVisible();
+  await expect(page.locator('[data-action=copy-login-url]')).toBeVisible();
+  const qrDownload=page.waitForEvent('download');
+  await page.locator('[data-action=download-qr]').click();
+  const qrFile=await qrDownload;
+  if(!qrFile.suggestedFilename().endsWith('.png'))throw new Error('학생 접속 QR 파일명이 올바르지 않습니다.');
   await page.locator('[name=year]').fill('2026');await page.locator('[name=grade]').fill('2');
   await page.locator('[name=classNo]').fill('1');await page.locator('[name=number]').fill('1');
   await page.locator('[name=name]').fill('가상연구자1');await page.locator('[name=password]').fill('student-demo-2026');
@@ -44,6 +51,8 @@ try {
   await expect(page.locator('h1')).toContainText('가상연구자1');
   await page.locator('[data-nav=activities]').click();await page.locator('[data-open]').first().click();
   await expect(page.locator('#answer')).toBeVisible();
+  const pasted=await page.locator('#answer').evaluate((el)=>el.dispatchEvent(new InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:'insertFromPaste',data:'붙여넣기 시도'})));
+  expect(pasted).toBe(false);await expect(page.locator('#toast')).toContainText('직접 작성');
   await page.locator('#answer').fill('카탈레이스: 과산화수소를 분해하는 효소. <script>alert("xss")</script>');
   await page.locator('[data-action=retry-save]').click();
   await expect(page.locator('#save-status')).toContainText('서버에 저장 완료');
@@ -70,22 +79,24 @@ try {
   await page.locator('[data-action=submit-report]').click();
   await expect(page.locator('main .tag').first()).toContainText('검토 대기');
   await expect(page.locator('#answer')).toHaveAttribute('readonly','');
-  await page.locator('[data-action=logout]').click();await page.locator('[data-nav=teacher]').click();
-  await page.locator('[name=password]').fill('teacher-demo-2026');await page.locator('#login-form button[type=submit]').click();
+  await page.locator('[data-action=logout]').click();await expect(page.locator('#identity a[href="#lab"]')).toBeVisible();await page.locator('[data-nav=teacher]').click();
+  await expect(page.locator('#login-form h2')).toContainText('교사 로그인');await page.locator('[name=password]').fill('teacher-demo-2026');await page.locator('#login-form').evaluate((form)=>form.requestSubmit());
+  await expect(page.locator('#identity [data-action=logout]')).toBeVisible({timeout:30000});await page.locator('[data-nav=teacher]').click();
   await expect(page.locator('[data-review]').first()).toBeVisible();
   await page.locator('[data-review]').first().click();
   await page.locator('[name=feedback]').fill('기능의 근거를 보완해 주세요.');
   await page.locator('button[value=revision]').click();
   await expect(page.locator('#report-table')).toContainText('보완 요청');
-  await page.locator('[data-action=logout]').click();await page.locator('[data-nav=lab]').click();
+  await page.locator('[data-action=logout]').click();await expect(page.locator('#identity a[href="#lab"]')).toBeVisible();await page.locator('[data-nav=lab]').click();
   for(const [key,value] of Object.entries({year:'2026',grade:'2',classNo:'1',number:'1',name:'가상연구자1',password:'student-demo-2026'}))await page.locator('[name='+key+']').fill(value);
   await page.locator('#login-form button[type=submit]').click();await page.locator('a[href="#write/enzyme-structure"]').click();
   await expect(page.locator('main .notice')).toContainText('근거를 보완');
   await page.locator('#answer').fill('카탈레이스 연구를 보완했습니다.');
   await page.locator('[data-action=preview-report]').click();await page.locator('[data-action=submit-report]').click();
   await expect(page.locator('main .tag').first()).toContainText('검토 대기');
-  await page.locator('[data-action=logout]').click();await page.locator('[data-nav=teacher]').click();
-  await page.locator('[name=password]').fill('teacher-demo-2026');await page.locator('#login-form button[type=submit]').click();
+  await page.locator('[data-action=logout]').click();await expect(page.locator('#identity a[href="#lab"]')).toBeVisible();await page.locator('[data-nav=teacher]').click();
+  await expect(page.locator('#login-form h2')).toContainText('교사 로그인');await page.locator('[name=password]').fill('teacher-demo-2026');await page.locator('#login-form').evaluate((form)=>form.requestSubmit());
+  await expect(page.locator('#identity [data-action=logout]')).toBeVisible({timeout:30000});await page.locator('[data-nav=teacher]').click();
   await page.locator('[data-review]').first().click();await page.locator('button[value=approved]').click();
   await page.locator('[data-generate]').first().click();await page.locator('[data-edit-publication]').first().click();
   await page.locator('[name=title]').fill('카탈레이스, 생명을 지키는 작은 촉매');
@@ -142,7 +153,9 @@ try {
   // Mobile layout and tap targets.
   await page.setViewportSize({width:390,height:844});await page.locator('[data-nav=activities]').click();
   await page.screenshot({path:'.qa/activities-mobile.png',fullPage:true});
+  await page.locator('[data-nav=lab]').click();await expect(page.locator('.login-qr-canvas')).toBeVisible();
+  await page.screenshot({path:'.qa/login-mobile.png',fullPage:true});
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1);
   expect(overflow).toBe(false);expect(errors).toEqual([]);
-  console.log('PASS: login, 9 steps, save/reload, submission lock, revision/resubmit, approval, publication, anonymity, unpublish, CSV/XLS/XLSX import, dynamic assessment, mobile overflow, no JS errors');
+  console.log('PASS: QR download, paste blocking, login, 9 steps, save/reload, submission lock, revision/resubmit, approval, publication, anonymity, unpublish, CSV/XLS/XLSX import, dynamic assessment, mobile overflow, no JS errors');
 } finally { await browser.close(); }

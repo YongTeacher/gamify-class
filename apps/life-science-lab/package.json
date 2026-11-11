@@ -16,6 +16,7 @@
     "@playwright/test": "^1.65.0"
   },
   "dependencies": {
-    "html2pdf.js": "^0.10.3"
+    "html2pdf.js": "^0.10.3",
+    "qrcode-generator": "^1.4.4"
   }
 }
