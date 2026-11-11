@@ -1,0 +1,2 @@
+/apps/life-science-lab https://life-science-lab.bsy0708.workers.dev/ 302
+/apps/life-science-lab/* https://life-science-lab.bsy0708.workers.dev/:splat 302
