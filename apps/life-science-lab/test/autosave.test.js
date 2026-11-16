@@ -22,3 +22,10 @@ test('충돌은 자동 덮어쓰기·재시도하지 않고 복구본을 유지'
   assert.equal(await saver.flush(),false);saver.stop();
   assert.equal(requests,1);assert.equal(saver.dirty,true);assert.equal(states.at(-1),'error');assert.ok(backups.at(-1));
 });
+test('서버 저장 성공 뒤에도 동기화 표시가 있는 기기 복구본을 유지',async()=>{
+  const backups=[];
+  const saver=new ReportSaver({id:'r',version:0,content:{}},async(r)=>({...r,version:1,updatedAt:'2026-11-16T01:00:00.000Z'}),()=>{},(report,options)=>backups.push({report,options}));
+  saver.change({selection:'학생이 직접 작성한 글'});assert.equal(await saver.flush(),true);saver.stop();
+  assert.equal(backups.at(-1).report.content.selection,'학생이 직접 작성한 글');
+  assert.equal(backups.at(-1).options.synced,true);
+});

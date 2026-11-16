@@ -9,7 +9,7 @@ export class ReportSaver {
   get dirty() { return this.savedRevision !== this.revision; }
   change(content) {
     this.report.content = structuredClone(content); this.revision++; this.retries = 0;
-    this.backup(this.report); this.onState('waiting', '변경 내용 저장 대기');
+    this.backup(this.report,{synced:false}); this.onState('waiting', '기기에 저장됨 · 서버 저장 대기');
     // Save after a 4s pause, but never wait more than 20s while typing continuously.
     // (Was 1.5s: a class of 30 typing at once flooded the single storage queue.)
     const now = Date.now(); if (!this.firstChangeAt) this.firstChangeAt = now;
@@ -22,18 +22,18 @@ export class ReportSaver {
     if (!this.dirty) return true;
     const revision = this.revision, snapshot = structuredClone(this.report);
     this.firstChangeAt = 0;
-    this.onState('saving', '저장 중…');
+    this.onState('saving', '기기에 저장됨 · 서버 저장 중…');
     this.pending = (async () => {
       try {
         const result = await this.send(snapshot);
         this.report.version = result.version; this.report.updatedAt = result.updatedAt;
         this.savedRevision = revision; this.retries = 0;
-        this.backup(this.dirty ? this.report : null);
-        this.onState(this.dirty ? 'waiting' : 'saved', this.dirty ? '추가 변경 저장 중…' : '서버에 저장 완료');
+        this.backup(this.report,{synced:!this.dirty});
+        this.onState(this.dirty ? 'waiting' : 'saved', this.dirty ? '기기에 저장됨 · 추가 변경 서버 저장 대기' : '서버와 기기에 저장 완료');
         return true;
       } catch (e) {
         this.conflict = e.status === 409;
-        this.onState('error', e.message || '저장 실패: 다시 시도해 주세요.');
+        this.onState('error', this.conflict ? '서버본과 충돌 · 기기 복구본은 보존됨' : '인터넷 연결 오류 · 글은 이 기기에 보관됨');
         // Retry only transient failures, with growing, randomized delays so a class
         // doesn't retry in lockstep. Validation/auth errors are not retried.
         const retryable = !e.status || [408, 425, 429, 500, 502, 503, 504].includes(e.status);

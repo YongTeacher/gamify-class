@@ -11,6 +11,7 @@ const healthGate=new Promise((resolve)=>{releaseHealth=resolve;});
 let releaseGroups;
 const groupsGate=new Promise((resolve)=>{releaseGroups=resolve;});
 let archiveRequests=0;
+let failReportSaves=0;
 let demoTrash=[{id:'demo-trash',deletedAt:'2026-11-12T10:00:00.000Z',title:'예전 보고서',status:'rejected',student:{name:'가상연구자1'}}];
 const vendorRequests=[];
 await page.route('**/api/lab/health',async(route)=>{await healthGate;await route.continue();});
@@ -18,6 +19,7 @@ await page.route('**/api/lab/rpc',async(route)=>{
   const action=JSON.parse(route.request().postData()||'{}').action;
   if(action==='report.trash.list')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({result:{reports:demoTrash}})});
   if(action==='report.restore'){demoTrash=[];return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({result:{ok:true}})});}
+  if(action==='report.save' && failReportSaves>0){failReportSaves--;return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'테스트용 일시 서버 오류'})});}
   if(action==='groups.list')await groupsGate;
   if(action==='archive')archiveRequests++;
   await route.continue();
@@ -71,6 +73,13 @@ try {
   const pasted=await page.locator('#answer').evaluate((el)=>el.dispatchEvent(new InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:'insertFromPaste',data:'붙여넣기 시도'})));
   expect(pasted).toBe(false);await expect(page.locator('#toast')).toContainText('직접 작성');
   await writeAnswer('카탈레이스: 과산화수소를 분해하는 효소. <script>alert("xss")</script>');
+  failReportSaves=10;
+  await page.locator('[data-action=save-draft]').click();
+  await expect(page.locator('#save-status')).toContainText('기기에 보관됨');
+  failReportSaves=0;
+  await page.reload();
+  await expect(page.locator('#answer')).toContainText('카탈레이스');
+  await expect(page.locator('main .notice')).toContainText('최신 작성 내용을 복원');
   await page.locator('[data-action=save-draft]').click();
   await expect(page.locator('#save-status')).toContainText('임시저장 완료');
   await page.reload();await expect(page.locator('#answer')).toContainText('카탈레이스');

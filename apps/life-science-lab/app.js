@@ -1,8 +1,10 @@
 import { ReportSaver } from './autosave.js';
+import { DraftStore } from './draft-store.js';
 import { parseRoster, prepareRoster, rosterCSV } from './roster.js';
 import { reportDocumentHTML, reportFileName } from './report-document.js';
 const $ = (s) => document.querySelector(s);
 const main = $('#main'), clone = (v) => structuredClone(v);
+const draftStore = new DraftStore();
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const state = { user:null, groups:[],groupId:new URL(location.href).searchParams.get('group') || 'legacy', assessments:[], assessmentsGroup:null, assessmentError:'', assessmentRequest:null, groupsReady:false, restoringSession:true, works:[], reports:[], configured:false, saver:null, step:0, adminTab:'reports', students:[], publications:[], reportPhotos:new Map(), reportFilters:{assessmentId:'',status:'',course:''}, reportFilterGroup:null };
 const statuses = { draft:'작성 중', submitted:'검토 대기', approved:'승인됨', revision:'보완 요청', rejected:'반려', open:'운영 중', closed:'마감', hidden:'비공개' };
@@ -236,31 +238,45 @@ async function lab() {
     (data.reports.length ? data.reports.map((r) => '<article class="card"><div class="card-body">' + tag(r.status) + '<h3 style="margin-top:20px">' + esc(r.title) + '</h3><p>최근 저장 ' + date(r.updatedAt) + '</p>' + (r.review?.feedback ? '<div class="notice">선생님 피드백<br>' + esc(r.review.feedback) + '</div>' : '') + '<a class="button primary" href="#write/' + esc(r.assessmentId) + '">' + (['draft','revision','rejected'].includes(r.status) ? '이어 쓰기' : '보고서 확인') + ' →</a></div></article>').join('') : '<div class="empty"><h3>첫 연구 노트를 펼쳐 보세요.</h3><p>탐구 활동에서 주제를 선택하면<br>여기에 연구 노트가 생깁니다.</p><a class="button primary" href="#activities">탐구 고르기 →</a></div>') + '</div>';
 }
 function backupKey(id) { return 'life-lab:draft:' + state.user.id + ':' + id; }
-function backup(report) {
-  try { const key = backupKey(state.saver.report.id); if (report) localStorage.setItem(key, JSON.stringify({ report, at: Date.now() })); else localStorage.removeItem(key); }
-  catch { toast('이 기기의 복구본을 보관하지 못했습니다. 서버 저장 상태를 확인해 주세요.'); }
+let draftWarningShown=false;
+function backup(report, options={}) {
+  if(!report)return;
+  const result=draftStore.save(backupKey(report.id),report,options);
+  if(!result.local)result.persisted.then((saved)=>{
+    if(!saved&&!draftWarningShown){draftWarningShown=true;toast('이 브라우저는 기기 복구본을 보관하지 못했습니다. 시크릿 모드를 끄거나 저장 공간을 확인해 주세요.');}
+  });
 }
 async function editor(id) {
   if (state.user?.role !== 'student') return login('student');
   main.innerHTML = '<div class="page-heading"><span class="eyebrow">RESEARCH NOTE</span><h1>연구 기록</h1><p class="loading">보고서를 불러오는 중입니다…</p></div>';
-  const report = await api('report.open', { assessmentId:id });
+  const [report,storageStatus] = await Promise.all([api('report.open', { assessmentId:id }),draftStore.probe()]);
   state.step = 0;
   state.saver = new ReportSaver(report, (r) => api('report.save', { id:r.id, version:r.version, content:r.content }),
     (status, message) => { if ($('#save-status')) { $('#save-status').dataset.state = status; $('#save-status').textContent = message; } }, backup);
   const writable = ['draft','revision','rejected'].includes(report.status);
+  let recovered=false,recoveryConflict=false;
   if (writable) {
     try {
-      const raw = localStorage.getItem(backupKey(report.id)), saved = raw ? JSON.parse(raw) : null;
-      if (saved && Date.now() - saved.at < 7 * 86400000 && saved.report.version === report.version && confirm('이 기기에 서버로 저장되지 않은 복구본이 있습니다. 이어서 작성할까요?')) {
-        state.saver.change(saved.report.content);
-      } else if (saved && saved.report.version !== report.version) {
-        toast('서버와 다른 버전의 복구본이 있습니다. 아래 복구본 다운로드로 확인하세요.');
+      const saved=await draftStore.load(backupKey(report.id));
+      const differs=saved && JSON.stringify(saved.report.content || {})!==JSON.stringify(report.content || {});
+      if(differs && saved.report.version===report.version) {
+        state.saver.change(saved.report.content);recovered=true;
+      } else if(differs) {
+        recoveryConflict=true;
+        if(confirm('이 기기의 미저장 복구본과 서버 최신본이 서로 다릅니다.\n\n확인: 이 기기에서 작성한 내용을 복원\n취소: 서버 최신본을 사용 (기기 복구본은 보존)')) {
+          state.saver.change(saved.report.content);recovered=true;recoveryConflict=false;
+        }
+      } else if(!saved || !saved.synced) {
+        backup(report,{synced:true});
       }
     } catch { toast('복구본을 읽지 못했습니다. 서버에서 불러온 내용으로 시작합니다.'); }
   }
   main.innerHTML = '<div class="page-heading"><span class="eyebrow">RESEARCH NOTE / ' + report.fields.length + ' STEPS</span><h1>' + esc(report.title) + '</h1><div class="actions">' + tag(report.status) + '<a class="hint" href="#lab">← 나의 연구실</a></div></div>' +
+    (!storageStatus.available ? '<div class="notice error"><strong>기기 복구본을 만들 수 없습니다.</strong><p>시크릿 모드를 끄거나 브라우저 저장 공간을 확인한 뒤 다시 접속하세요. 서버 저장이 실패하면 작성 내용이 보호되지 않을 수 있습니다.</p></div>' : '') +
+    (recovered ? '<div class="notice"><strong>이 기기의 최신 작성 내용을 복원했습니다.</strong><p>인터넷 연결이 확인되면 서버 저장을 자동으로 다시 시도합니다.</p></div>' : '') +
+    (recoveryConflict ? '<div class="notice"><strong>서버 최신본을 열었습니다.</strong><p>서로 다른 기기 복구본은 삭제하지 않았습니다. 필요한 경우 ‘복구본 다운로드’로 확인할 수 있습니다.</p></div>' : '') +
     (report.review?.feedback ? '<div class="notice"><strong>선생님 피드백</strong><p class="prose">' + esc(report.review.feedback) + '</p></div>' : '') +
-    '<div class="savebar"><span id="save-status" role="status" aria-live="polite">서버 기록 불러오기 완료 · ' + date(report.updatedAt) + '</span><div class="actions">' + (writable ? '<button class="small primary" data-action="save-draft">임시저장</button>' : '') + '<button class="small ghost" data-action="backup">복구본 다운로드</button><button class="small" data-action="reload-report">최신본 불러오기</button></div></div>' +
+    '<div class="savebar"><span id="save-status" role="status" aria-live="polite">' + (recovered ? '기기 복구본 복원 완료 · 서버 저장 대기' : '서버 기록 불러오기 완료 · '+date(report.updatedAt)) + '</span><div class="actions">' + (writable ? '<button class="small primary" data-action="save-draft">임시저장</button>' : '') + '<button class="small ghost" data-action="backup">복구본 다운로드</button><button class="small" data-action="reload-report">최신본 불러오기</button></div></div>' +
     '<section id="report-photo-panel" class="report-photo-panel" aria-labelledby="report-photo-title"></section>' +
     '<div class="workspace"><aside><p id="progress-label" class="hint"></p><progress id="progress" max="100" value="0" aria-label="작성 진행률"></progress><nav id="steps" class="step-nav" aria-label="보고서 단계"></nav><div class="hint" style="margin-top:22px">자료 찾기<br>RISS · DBpia · KOCW<br>RCSB Protein Data Bank<br><br>확인되지 않은 수치는<br>‘자료 미확인’으로 기록하세요.</div></aside><section class="editor"><div id="editor-field"></div><div class="editor-meta"><span id="char-count"></span><span>최대 6,000자 / 항목</span></div><div class="actions"><button data-action="prev">← 이전</button><button data-action="next">다음 →</button><button class="primary" data-action="preview-report">전체 미리보기 · 제출</button></div></section></div>';
   renderStep();
@@ -679,13 +695,13 @@ document.addEventListener('click', async (e) => {
               $('#save-status').dataset.state='saved';
               $('#save-status').textContent=message;
               toast('임시저장했습니다. 나중에 다시 로그인해 이어서 작성할 수 있습니다.');
-            } else toast('서버에 임시저장하지 못했습니다. 저장 상태를 확인하고 다시 눌러 주세요.');
+            } else toast('서버에 임시저장하지 못했습니다. 작성 내용은 이 기기에 보관했으며 연결이 회복되면 다시 시도합니다.');
           } finally { b.disabled=false; }
         }
         break;
       case 'reload-report':if(confirm('이 기기의 미저장 내용은 복구본으로 보관하고 서버 최신본을 불러올까요?')){state.saver.stop();state.saver=null;await route();}break;
       case 'backup':{
-        let stored=null;try{stored=JSON.parse(localStorage.getItem(backupKey(state.saver.report.id))||'null');}catch{}
+        const stored=await draftStore.load(backupKey(state.saver.report.id));
         download('연구노트-복구본.json',JSON.stringify(stored?.report||state.saver.report,null,2));break;
       }
       case 'preview-report':{
