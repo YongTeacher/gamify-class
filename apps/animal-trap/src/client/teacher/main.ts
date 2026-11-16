@@ -35,10 +35,17 @@ function forget(code: string) { try { localStorage.setItem(STORE, JSON.stringify
 // ── 시작 화면: 판 만들기 / 이어하기 ─────────────────────────────
 let session: { close(): void } | null = null;
 let sessionNo = 0;
+type SetInfo = { name: string; total: number; counts: { 쉬움: number; 보통: number; 어려움: number } };
+let setList: SetInfo[] = [];
+let chosenSet: string | null = null;
+let setLoadNo = 0;
 function endSession() { session?.close(); session = null; view = null; sessionNo++; busy = false; pendingFocus = null; $('#banners').innerHTML = ''; }
 
 function renderHome() {
   endSession();
+  setList = [];
+  chosenSet = null;
+  setLoadNo++;
   const games = savedGames();
   app.innerHTML = `
     <div class="top"><h1>🌴 애니멀 트랩 · 교사</h1><div class="row"><a class="small" href="/guide" style="text-decoration:none">사용 안내</a><a class="small" href="/admin" style="text-decoration:none">📚 문제은행</a><a class="small" href="/" target="_blank" rel="noopener">학생 화면 열기 ↗</a></div></div>
@@ -46,7 +53,14 @@ function renderHome() {
       <section class="card form" aria-labelledby="mk">
         <h2 id="mk">새 판 만들기</h2>
         <label>판 제목<input id="title" maxlength="60" placeholder="예: 2학년 3반 효소 단원"></label>
-        <label>문제 세트 이름 <span class="muted" style="font-weight:400">(비우면 문제은행 전체)</span><input id="setName" maxlength="60" list="setNames" placeholder="비밀번호를 넣으면 세트 목록이 떠요"></label><datalist id="setNames"></datalist>
+        <div class="set-picker">
+          <strong>① 관리자 비밀번호 입력</strong>
+          <div class="set-load"><input id="admin" type="password" autocomplete="current-password" aria-label="관리자 비밀번호" placeholder="문제 세트를 보려면 입력"><button class="small" id="loadSets" type="button">세트 목록 불러오기</button></div>
+          <strong>② 사용할 문제 세트 선택</strong>
+          <select id="setChoice" aria-label="사용할 문제 세트" disabled><option value="">먼저 세트 목록을 불러오세요</option></select>
+          <p id="setInfo" class="set-info" role="status">세트 이름과 문항 수를 확인한 뒤 선택할 수 있어요.</p>
+          <a href="/admin" target="_blank" rel="noopener">문제은행에서 세트 관리 ↗</a>
+        </div>
         <div class="grid2">
           <label>팀 수<select id="teamCount">${[4, 5, 6, 7, 8].map((n) => `<option value="${n}"${n === 8 ? ' selected' : ''}>${n}팀</option>`).join('')}</select></label>
           <label>게임 시간(분)<input id="durationMin" type="number" min="1" max="60" value="15"></label>
@@ -55,7 +69,6 @@ function renderHome() {
           <label>덫 설치 시간(초)<input id="setupSec" type="number" min="60" max="300" value="120"></label>
         </div>
         <label style="display:flex;gap:8px;align-items:center;font-weight:600"><input id="autoNext" type="checkbox" style="width:auto"> 라운드 결과 5초 뒤 자동으로 다음 라운드</label>
-        <label>관리자 비밀번호<input id="admin" type="password" autocomplete="current-password"></label>
         <button class="btn" id="create">판 만들기</button>
       </section>
       <section class="card">
@@ -65,28 +78,61 @@ function renderHome() {
       </section>
     </div>`;
   $('#create').onclick = createGame;
-  ($('#admin') as HTMLInputElement).onchange = fillSetNames;
+  $('#loadSets').onclick = fillSetNames;
+  $<HTMLInputElement>('#admin').onchange = () => { if ($<HTMLInputElement>('#admin').value) void fillSetNames(); };
+  $<HTMLInputElement>('#admin').oninput = () => {
+    setList = []; chosenSet = null;
+    setLoadNo++;
+    const select = $<HTMLSelectElement>('#setChoice'); select.disabled = true;
+    select.innerHTML = '<option value="">세트 목록을 다시 불러오세요</option>';
+    $('#setInfo').textContent = '비밀번호를 입력하고 세트 목록을 불러오세요.';
+  };
+  $<HTMLSelectElement>('#setChoice').onchange = showSetInfo;
   app.querySelectorAll<HTMLButtonElement>('[data-code]').forEach((b) => (b.onclick = () => { const g = savedGames().find((x) => x.code === b.dataset.code); if (g) openGame(g); }));
   app.querySelectorAll<HTMLButtonElement>('[data-forget]').forEach((b) => (b.onclick = () => { forget(b.dataset.forget as string); renderHome(); }));
   const all = document.getElementById('forgetAll'); if (all) all.onclick = () => { if (confirm('이 브라우저에 저장된 판 기록을 모두 지울까요? (판 자체는 지워지지 않아요)')) { try { localStorage.removeItem(STORE); } catch { /* */ } renderHome(); } };
 }
 
-/** 비밀번호를 넣으면 세트 이름 목록을 채운다(틀려도 조용히 넘어감 — 판 만들기에서 다시 알려 준다) */
+/** 관리자 인증 뒤 세트·문항 수를 불러온다. 전체 문제은행은 명시적으로 선택한다. */
 async function fillSetNames() {
-  const pw = ($('#admin') as HTMLInputElement).value; if (!pw) return;
+  const pw = $<HTMLInputElement>('#admin').value;
+  if (!pw) { $('#setInfo').textContent = '관리자 비밀번호를 먼저 입력해 주세요.'; return; }
   const mine = sessionNo;
-  const r = await call<{ sets: { name: string; total: number }[] }>('/api/admin/sets', { 'X-Admin-Password': pw }, undefined, 'GET');
-  if (mine !== sessionNo || !r.ok) return;
-  const dl = document.getElementById('setNames'); if (!dl) return;
-  dl.innerHTML = r.data.sets.map((s) => `<option value="${esc(s.name)}">${s.total}문항</option>`).join('');
+  const loadNo = ++setLoadNo;
+  setList = []; chosenSet = null;
+  $<HTMLSelectElement>('#setChoice').disabled = true;
+  const button = $<HTMLButtonElement>('#loadSets'); button.disabled = true;
+  $('#setInfo').textContent = '문제 세트 목록을 불러오는 중…';
+  const r = await call<{ sets: SetInfo[] }>('/api/admin/sets', { 'X-Admin-Password': pw }, undefined, 'GET');
+  if (mine !== sessionNo || loadNo !== setLoadNo || $<HTMLInputElement>('#admin').value !== pw) return;
+  button.disabled = false;
+  if (!r.ok) { $('#setInfo').textContent = r.error === 'ADMIN_DENIED' ? '비밀번호가 맞지 않아요. 확인 후 다시 불러오세요.' : errText(r.error); return; }
+  setList = r.data.sets;
+  chosenSet = null;
+  const select = $<HTMLSelectElement>('#setChoice');
+  select.disabled = !setList.length;
+  select.innerHTML = `<option value="">문제 세트를 선택하세요</option><option value="all">전체 문제은행 · ${setList.reduce((n, s) => n + s.total, 0)}문항</option>${setList.map((s, i) => `<option value="set:${i}">${esc(s.name)} · ${s.total}문항</option>`).join('')}`;
+  $('#setInfo').textContent = setList.length ? `${setList.length}개 세트를 불러왔어요. 사용할 세트를 골라 주세요.` : '등록된 문제 세트가 없어요. 문제은행에서 먼저 문항을 등록해 주세요.';
+}
+
+function showSetInfo() {
+  const value = $<HTMLSelectElement>('#setChoice').value;
+  const selected = /^set:(\d+)$/.exec(value);
+  const set = selected ? setList[Number(selected[1])] : undefined;
+  chosenSet = value === 'all' ? '' : set?.name ?? null;
+  if (chosenSet === null) { $('#setInfo').textContent = '사용할 문제 세트를 골라 주세요.'; return; }
+  const counts = set ? set.counts : setList.reduce((sum, s) => ({ 쉬움: sum.쉬움 + s.counts.쉬움, 보통: sum.보통 + s.counts.보통, 어려움: sum.어려움 + s.counts.어려움 }), { 쉬움: 0, 보통: 0, 어려움: 0 });
+  const total = counts.쉬움 + counts.보통 + counts.어려움;
+  $('#setInfo').textContent = `${set?.name ?? '전체 문제은행'} · 총 ${total}문항 (쉬움 ${counts.쉬움} · 보통 ${counts.보통} · 어려움 ${counts.어려움})${total > 300 ? ' · 판에는 난이도 비율에 맞춰 최대 300문항 사용' : ''}${Object.values(counts).some((n) => n === 0) ? ' · 난이도별로 최소 1문항이 필요해요' : ''}`;
 }
 
 async function createGame() {
   const num = (id: string) => Number(($('#' + id) as HTMLInputElement).value);
-  const body = { title: ($('#title') as HTMLInputElement).value, setName: ($('#setName') as HTMLInputElement).value,
+  const body = { title: ($('#title') as HTMLInputElement).value, setName: chosenSet ?? '',
     teamCount: num('teamCount'), durationMin: num('durationMin'), moveSec: num('moveSec'), quizSec: num('quizSec'), setupSec: num('setupSec'), autoNext: ($('#autoNext') as HTMLInputElement).checked };
   const pw = ($('#admin') as HTMLInputElement).value;
   if (!pw) return toast('관리자 비밀번호를 입력해 주세요.');
+  if (chosenSet === null) return toast('문제 세트 목록을 불러와 사용할 세트를 선택해 주세요.');
   const btn = $<HTMLButtonElement>('#create'); btn.disabled = true;
   const mine = sessionNo;
   const r = await call<{ code: string; hostKey: string; warnings: string[] }>('/api/game', { 'X-Admin-Password': pw }, body);

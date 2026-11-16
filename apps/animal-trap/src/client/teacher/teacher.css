@@ -10,6 +10,15 @@ h2 { font-size: 1.1rem; margin: 0 0 10px; }
 .form { display: grid; gap: 10px; }
 .form label { display: grid; gap: 4px; font-weight: 700; font-size: .95rem; }
 .form input, .form select { padding: 10px 12px; border-radius: 10px; border: 2px solid var(--line); background: #fff; }
+.set-picker { display: grid; gap: 9px; padding: 16px; border: 2px solid var(--line); border-radius: 14px; background: var(--bg2); }
+.set-picker strong { font-size: .95rem; }
+.set-picker select { width: 100%; min-width: 0; font-weight: 700; }
+.set-picker select:disabled { opacity: .65; }
+.set-picker a { font-size: .85rem; font-weight: 700; }
+.set-load { display: flex; flex-wrap: wrap; gap: 8px; }
+.set-load input { flex: 1 1 190px; min-width: 0; }
+.set-load button { flex: 0 0 auto; }
+.set-info { margin: 0; padding: 10px 12px; border-radius: 9px; background: #fff; line-height: 1.5; font-size: .88rem; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .clockbox { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
 .clockbox b { font-size: 2.2rem; font-variant-numeric: tabular-nums; }
