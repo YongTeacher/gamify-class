@@ -202,6 +202,14 @@ globalThis.LabDomain = (() => {
       const students = db.all('Students');
       return { reports: db.all('Reports').map((r) => ({ ...r, student: publicStudent(students.find((s) => s.id === r.studentId)), review: latestReview(db, r.id) })) };
     }
+    if (action === 'report.teacherSave') {
+      const r = find(db, 'Reports', p.id);
+      if (!r) fail(404, '보고서를 찾을 수 없습니다.');
+      if (Number(p.version) !== r.version) fail(409, '학생 보고서가 변경되었습니다. 목록을 새로고침한 뒤 다시 수정하세요.');
+      const content = answers(r.fields, p.content, false);
+      const next = { ...r, content, version: r.version + 1, updatedAt: now };
+      db.put('Reports', next); return next;
+    }
     if (action === 'review') {
       const r = find(db, 'Reports', p.id);
       if (!r || r.status !== 'submitted') fail(409, '검토 대기 중인 보고서를 선택하세요.');

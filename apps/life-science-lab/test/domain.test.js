@@ -20,6 +20,16 @@ test('저장 버전 역전 차단; 최신 글과 서버 버전을 유지',()=>{
   fails(()=>f.run('report.save',{id:r.id,version:0,content:{selection:'오래된 글'}},f.student),409);
   assert.equal(f.db.all('Reports')[0].content.selection,'최신 글');
 });
+test('교사는 학생 보고서 본문을 수정하되 상태와 검토 기록을 유지한다',()=>{
+  const f=fixture(),submittedReport=submitted(f);
+  f.run('review',{id:submittedReport.id,version:submittedReport.version,status:'approved',feedback:'승인 기록'});
+  const before=f.db.all('Reports')[0],reviews=f.db.all('Reviews').length,content={...before.content,topic:'교사가 수정한 탐구 주제'};
+  fails(()=>f.run('report.teacherSave',{id:before.id,version:before.version,content},f.student),403);
+  const saved=f.run('report.teacherSave',{id:before.id,version:before.version,content},f.teacher);
+  assert.equal(saved.content.topic,'교사가 수정한 탐구 주제');assert.equal(saved.status,'approved');
+  assert.equal(saved.version,before.version+1);assert.equal(f.db.all('Reviews').length,reviews);
+  fails(()=>f.run('report.teacherSave',{id:before.id,version:before.version,content},f.teacher),409);
+});
 test('필수 항목과 참고 자료 검사; 제출 후 잠금; 보완 후 재제출',()=>{
   const f=fixture(),r=f.run('report.open',{assessmentId:'enzyme-structure'},f.student);
   fails(()=>f.run('report.submit',{id:r.id,version:0,content:{}},f.student),400);

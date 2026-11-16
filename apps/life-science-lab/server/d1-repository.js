@@ -95,7 +95,7 @@ function readPlan(action, p = {}, actor = {}) {
     Q('Reports', 'SELECT data FROM Reports WHERE studentId = ?', sid),
     Q('Reviews', 'SELECT data FROM Reviews WHERE reportId IN (SELECT id FROM Reports WHERE studentId = ?)', sid),
     ...(action === 'report.open' ? assessmentById(String(p.assessmentId)) : [])];
-  if (action === 'report.save' || action === 'report.submit' || action === 'report.meta') return [group(gid), ...student,
+  if (action === 'report.save' || action === 'report.submit' || action === 'report.teacherSave' || action === 'report.meta') return [group(gid), ...student,
     Q('Reports', 'SELECT data FROM Reports WHERE id = ?', String(p.id)), ...(action !== 'report.meta' ? assessmentOfReport(String(p.id)) : [])];
   return null; // full read
 }

@@ -5,7 +5,7 @@ import { syncToSheets, migrateFromSheets } from './sheets-sync.js';
 // D1 is the source of truth when the LAB_DB binding exists; otherwise the old Sheets path.
 export const repositoryFor = (env) => (env.LAB_DB ? d1Repository(env) : sheetsRepository(env));
 const STUDENT = new Set(['myReports','report.open','report.save','report.submit']);
-const ADMIN = new Set(['groups.create','groups.update','students.list','students.import','student.update','assessments.list','assessment.save','reports.list','report.delete','report.trash.list','report.restore','review','publications.list','publication.generate','publication.save','publication.publish','publication.hide']);
+const ADMIN = new Set(['groups.create','groups.update','students.list','students.import','student.update','assessments.list','assessment.save','reports.list','report.teacherSave','report.delete','report.trash.list','report.restore','review','publications.list','publication.generate','publication.save','publication.publish','publication.hide']);
 const PUBLIC = new Set(['groups.list','bootstrap','archive']);
 ADMIN.add('sheets.refresh');
 ADMIN.add('migrate.fromSheets');

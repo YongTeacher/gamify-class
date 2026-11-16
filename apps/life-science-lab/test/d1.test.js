@@ -50,6 +50,19 @@ test('D1: 빈 DB에서 효소 탐구가 자동 준비되고 전체 수행평가 
   assert.equal(rows, 1);
 });
 
+test('D1: 교사만 학생 보고서를 버전 검사 후 수정할 수 있다',async()=>{
+  const {call,teacher}=await setup();
+  await call('students.import',{students:roster(1)},teacher);
+  const student=(await call('login',{...who(1),password:'1234'})).cookie;
+  const report=(await call('report.open',{assessmentId:'enzyme-structure'},student)).body.result;
+  const content=Object.fromEntries(report.fields.map((field)=>[field.id,field.type==='references'?[{title:'자료',author:'기관',source:'https://example.org'}]:'학생 답변']));
+  assert.equal((await call('report.teacherSave',{id:report.id,version:report.version,content},student)).status,403);
+  content.topic='교사가 붙여넣어 수정한 주제';
+  const saved=await call('report.teacherSave',{id:report.id,version:report.version,content},teacher);
+  assert.equal(saved.status,200);assert.equal(saved.body.result.content.topic,'교사가 붙여넣어 수정한 주제');assert.equal(saved.body.result.status,'draft');
+  assert.equal((await call('report.teacherSave',{id:report.id,version:report.version,content},teacher)).status,409);
+});
+
 test('D1: 보고서 휴지통은 연결 기록과 사진을 보존하고 새 보고서와 충돌하지 않을 때 복원한다', async () => {
   const { call, teacher, db, env } = await setup();
   const deletedImages = [];

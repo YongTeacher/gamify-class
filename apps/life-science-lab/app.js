@@ -261,11 +261,13 @@ async function editor(id) {
       const differs=saved && JSON.stringify(saved.report.content || {})!==JSON.stringify(report.content || {});
       if(differs && saved.report.version===report.version) {
         state.saver.change(saved.report.content);recovered=true;
-      } else if(differs) {
+      } else if(differs && !saved.synced) {
         recoveryConflict=true;
         if(confirm('이 기기의 미저장 복구본과 서버 최신본이 서로 다릅니다.\n\n확인: 이 기기에서 작성한 내용을 복원\n취소: 서버 최신본을 사용 (기기 복구본은 보존)')) {
           state.saver.change(saved.report.content);recovered=true;recoveryConflict=false;
         }
+      } else if(differs) {
+        backup(report,{synced:true});
       } else if(!saved || !saved.synced) {
         backup(report,{synced:true});
       }
@@ -549,10 +551,40 @@ function renderReportTable() {
     reports.filter((r) => !status || r.status === status).map((r) => '<tr><td>' + r.student.grade + '-' + r.student.classNo + '-' + r.student.number + ' ' + esc(r.student.name) + '</td><td>' + esc(r.title) + '</td><td>' + tag(r.status) + '</td><td>' + date(r.submittedAt) + '</td><td><button data-review="' + r.id + '">보고서 보기</button>' + (r.status === 'approved' ? ' <button data-generate="' + r.id + '">전시본 만들기</button>' : '') + ' <button class="danger" data-delete-report="' + r.id + '">휴지통으로</button></td></tr>').join('') + '</tbody></table>' +
     (pending.length ? '<p class="hint">아직 시작하지 않음: ' + pending.map((s) => esc(s.classNo+'반 '+s.number+'번 '+s.name)).join(', ') + '</p>' : '');
 }
+function teacherReferenceValues(container) {
+  return [...container.querySelectorAll('.reference-row')].map((row)=>Object.fromEntries([...row.querySelectorAll('[data-ref-key]')].map((input)=>[input.dataset.refKey,input.value])));
+}
+function renderTeacherReferences(container, values) {
+  container.innerHTML=(values.length?values:[{title:'',author:'',source:''}]).map((value,index)=>'<div class="reference-row"><strong>자료 '+(index+1)+'</strong>'+
+    [['title','자료 제목',300],['author','저자 또는 기관',200],['source','URL 또는 서지 정보',800]].map(([key,label,max])=>'<label>'+label+'<input data-ref-key="'+key+'" maxlength="'+max+'" value="'+esc(value[key] || '')+'"></label>').join('')+
+    '<button type="button" class="small ghost" data-remove-teacher-ref="'+index+'">자료 삭제</button></div>').join('');
+}
+function teacherReportEditor(id) {
+  const r=state.reports.find((value)=>value.id===id);
+  if(!r)throw new Error('보고서를 다시 불러와 주세요.');
+  dialog('학생 보고서 내용 수정 · '+r.student.name,'<form id="teacher-report-form" class="stack teacher-report-editor"><div class="notice"><strong>교사 편집 모드</strong><p>복사·붙여넣기를 사용할 수 있습니다. 저장 시 학생 보고서 버전만 올라가며 현재 상태와 기존 검토 기록은 유지됩니다.</p></div>'+
+    r.fields.map((field)=>'<section class="panel"><h3>'+esc(field.title)+'</h3><p class="hint">'+esc(field.guide || '')+'</p>'+(field.type==='references'
+      ? '<div data-teacher-references="'+esc(field.id)+'"></div><button type="button" data-add-teacher-ref="'+esc(field.id)+'">+ 참고 자료 추가</button>'
+      : '<textarea data-teacher-field="'+esc(field.id)+'" maxlength="6000" rows="7">'+esc(r.content?.[field.id] || '')+'</textarea>')+'</section>').join('')+
+    '<div class="actions"><button type="submit" class="primary">수정 내용 저장</button><button type="button" id="cancel-teacher-edit">취소</button></div></form>');
+  for(const field of r.fields.filter((value)=>value.type==='references'))renderTeacherReferences($('[data-teacher-references="'+CSS.escape(field.id)+'"]'),r.content?.[field.id] || []);
+  $('#cancel-teacher-edit').onclick=()=>review(id);
+  $('#teacher-report-form').onsubmit=async(e)=>{
+    e.preventDefault();const button=e.submitter;button.disabled=true;
+    try {
+      const content=clone(r.content || {});
+      for(const field of r.fields)content[field.id]=field.type==='references'
+        ? teacherReferenceValues($('[data-teacher-references="'+CSS.escape(field.id)+'"]'))
+        : $('[data-teacher-field="'+CSS.escape(field.id)+'"]').value;
+      await api('report.teacherSave',{id:r.id,version:r.version,content});
+      $('#modal').close();await reports();toast(r.student.name+' 학생의 보고서를 수정했습니다.');await review(id);
+    } catch(error){toast(error.message);button.disabled=false;}
+  };
+}
 async function review(id) {
   const r = state.reports.find((v) => v.id === id);
   try { await ensureReportPhoto(id); } catch (error) { toast(error.message); }
-  dialog('보고서 검토 · ' + r.student.name, reportPreviewHTML(r) + (r.review ? '<div class="notice">최근 검토: ' + esc(r.review.feedback) + '</div>' : '') +
+  dialog('보고서 검토 · ' + r.student.name, '<div class="actions"><button class="primary" data-edit-report="'+r.id+'">보고서 내용 수정</button></div>' + reportPreviewHTML(r) + (r.review ? '<div class="notice">최근 검토: ' + esc(r.review.feedback) + '</div>' : '') +
     (r.status === 'submitted' ? '<form id="review-form" class="stack"><label>학생에게 보낼 피드백<textarea name="feedback" maxlength="4000" rows="4"></textarea></label><div class="actions"><button name="status" value="approved" class="primary">보고서 승인</button><button name="status" value="revision">보완 요청</button><button name="status" value="rejected" class="danger">반려</button></div><p class="hint">승인은 전시 공개가 아닙니다. 전시본을 확인한 후 별도로 공개하세요.</p></form>' : ''));
   if ($('#review-form')) $('#review-form').onsubmit = async (e) => {
     e.preventDefault(); const button = e.submitter; button.disabled = true;
@@ -625,6 +657,9 @@ document.addEventListener('click', async (e) => {
     if(b.dataset.enterGroup){await switchGroup(b.dataset.enterGroup);location.hash='teacher';await admin();return;}
     if(b.dataset.tab){state.adminTab=b.dataset.tab;await admin();return;}
     if(b.dataset.review){b.disabled=true;try{await review(b.dataset.review);}finally{b.disabled=false;}return;}
+    if(b.dataset.editReport){teacherReportEditor(b.dataset.editReport);return;}
+    if(b.dataset.addTeacherRef!==undefined){const container=$('[data-teacher-references="'+CSS.escape(b.dataset.addTeacherRef)+'"]'),values=teacherReferenceValues(container);if(values.length>=20)throw new Error('참고 자료는 최대 20개입니다.');values.push({title:'',author:'',source:''});renderTeacherReferences(container,values);return;}
+    if(b.dataset.removeTeacherRef!==undefined){const container=b.closest('[data-teacher-references]'),values=teacherReferenceValues(container);values.splice(Number(b.dataset.removeTeacherRef),1);renderTeacherReferences(container,values);return;}
     if(b.dataset.deleteReport){
       const r=state.reports.find((v)=>v.id===b.dataset.deleteReport);
       if(!r)throw new Error('보고서를 다시 불러와 주세요.');

@@ -145,6 +145,12 @@ try {
   await expect(page.locator('[data-review]').first()).toBeVisible();
   await page.locator('[data-review]').first().click();
   await expect(page.locator('#printable-report .report-photo img')).toBeVisible();
+  await page.locator('[data-edit-report]').click();
+  const teacherPasteAllowed=await page.locator('[data-teacher-field="topic"]').evaluate((el)=>el.dispatchEvent(new InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:'insertFromPaste',data:'교사 붙여넣기'})));
+  expect(teacherPasteAllowed).toBe(true);
+  await page.locator('[data-teacher-field="topic"]').fill('교사가 복사·붙여넣기로 수정한 탐구 주제');
+  await page.locator('#teacher-report-form button[type=submit]').click();
+  await expect(page.locator('#printable-report')).toContainText('교사가 복사·붙여넣기로 수정한 탐구 주제');
   await expect(page.locator('[data-delete-report]').first()).toBeVisible();
   await page.locator('[name=feedback]').fill('기능의 근거를 보완해 주세요.');
   await page.locator('button[value=rejected]').click();
@@ -152,7 +158,9 @@ try {
   await page.locator('[data-action=logout]').click();await expect(page.locator('#identity a[href="#lab"]')).toBeVisible();await page.locator('[data-nav=lab]').click();
   for(const [key,value] of Object.entries({year:'2026',grade:'2',classNo:'1',number:'1',name:'가상연구자1',password:'student-demo-2026'}))await page.locator('[name='+key+']').fill(value);
   await page.locator('#login-form button[type=submit]').click();await page.locator('a[href="#write/enzyme-structure"]').click();
-  await expect(page.locator('main .notice')).toContainText('근거를 보완');
+  await expect(page.locator('main .notice').filter({hasText:'선생님 피드백'})).toContainText('근거를 보완');
+  await expect(page.locator('#answer')).toHaveValue('교사가 복사·붙여넣기로 수정한 탐구 주제');
+  await expect(page.locator('main .notice').filter({hasText:'최신 작성 내용을 복원'})).toHaveCount(0);
   await page.locator('#answer').fill('카탈레이스 연구를 보완했습니다.');
   await page.locator('[data-action=preview-report]').click();await page.locator('[data-action=submit-report]').click();
   await expect(page.locator('main .tag').first()).toContainText('검토 대기');
