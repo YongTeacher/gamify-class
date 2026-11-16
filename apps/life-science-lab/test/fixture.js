@@ -10,7 +10,7 @@ export function fixture() {
   const teacher = { role:'teacher' }, ctx = { now:'2026-11-07T01:00:00.000Z', uuid:() => crypto.randomUUID() };
   const run = (action, payload = {}, actor = teacher) => globalThis.LabDomain.execute(db, action, payload, actor, ctx);
   run('assessment.save', structuredClone(globalThis.LAB_SEED));
-  run('students.import', { students:[1,2].map((number) => ({ year:2026,grade:2,classNo:1,number,name:'가상연구자'+number,passwordHash:'a'.repeat(32)+':'+ 'b'.repeat(64) })) });
+  run('students.import', { students:[1,2].map((number) => ({ year:2026,grade:2,classNo:1,number,name:'가상연구자'+number,courseClass:'2-1',passwordHash:'a'.repeat(32)+':'+ 'b'.repeat(64) })) });
   const student = { role:'student',id:db.all('Students')[0].id,authVersion:1 };
   const other = { role:'student',id:db.all('Students')[1].id,authVersion:1 };
   return { tables,db,run,student,other,teacher,ctx };

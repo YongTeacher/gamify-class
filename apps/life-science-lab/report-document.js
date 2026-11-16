@@ -17,9 +17,11 @@ export function reportDocumentHTML(report, student = {}, group = {}, options = {
     }
     return '<p class="report-answer">' + escapeHTML(value || '아직 작성하지 않았습니다.') + '</p>';
   };
+  const year = group.year || student.year;
+  const subtitle = [report.title, group.subject || '생명과학 탐구', year ? year + '학년도' : ''].filter(Boolean).join(' · ');
   const identity = `${student.grade || '—'}학년 ${student.classNo || '—'}반 ${student.number || '—'}번`;
   return '<article class="report-document" id="printable-report" aria-label="탐구 보고서">' +
-    '<header class="report-document-head"><p class="report-kicker">LIFE SCIENCE · RESEARCH REPORT</p><h1>' + escapeHTML(reportTitle(report)) + '</h1><p class="report-subtitle">' + escapeHTML(group.subject || '생명과학 탐구') + ' · ' + escapeHTML(group.year || student.year || '') + '학년도</p></header>' +
+    '<header class="report-document-head"><p class="report-kicker">LIFE SCIENCE · RESEARCH REPORT</p><h1>' + escapeHTML(reportTitle(report)) + '</h1><p class="report-subtitle">' + escapeHTML(subtitle) + '</p></header>' +
     '<table class="report-identity"><tbody><tr><th>학교</th><td>' + escapeHTML(group.school || '—') + '</td><th>학번</th><td>' + escapeHTML(identity) + '</td></tr><tr><th>이름</th><td>' + escapeHTML(student.name || '—') + '</td><th>작성일</th><td>' + escapeHTML(koreanDate(report.submittedAt || report.updatedAt || report.createdAt)) + '</td></tr></tbody></table>' +
     (report.fields || []).filter((field) => field.id !== 'topic').map((field, index) => '<section class="report-part"><h2><span>' + String(index + 1).padStart(2,'0') + '</span>' + escapeHTML(field.title) + '</h2>' + answer(field) + '</section>').join('') +
     (options.photoUrl ? '<figure class="report-photo"><figcaption>효소 관련 사진 <span>선택 첨부</span></figcaption><img src="' + escapeHTML(options.photoUrl) + '" alt="학생이 선택하여 첨부한 효소 관련 사진"></figure>' : '') +

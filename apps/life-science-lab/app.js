@@ -4,7 +4,7 @@ import { reportDocumentHTML, reportFileName } from './report-document.js';
 const $ = (s) => document.querySelector(s);
 const main = $('#main'), clone = (v) => structuredClone(v);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
-const state = { user:null, groups:[],groupId:new URL(location.href).searchParams.get('group') || 'legacy', assessments:[], assessmentsGroup:null, assessmentError:'', assessmentRequest:null, groupsReady:false, restoringSession:true, works:[], reports:[], configured:false, saver:null, step:0, adminTab:'reports', students:[], publications:[], reportPhotos:new Map() };
+const state = { user:null, groups:[],groupId:new URL(location.href).searchParams.get('group') || 'legacy', assessments:[], assessmentsGroup:null, assessmentError:'', assessmentRequest:null, groupsReady:false, restoringSession:true, works:[], reports:[], configured:false, saver:null, step:0, adminTab:'reports', students:[], publications:[], reportPhotos:new Map(), reportFilters:{assessmentId:'',status:'',course:''}, reportFilterGroup:null };
 const statuses = { draft:'작성 중', submitted:'검토 대기', approved:'승인됨', revision:'보완 요청', rejected:'반려', open:'운영 중', closed:'마감', hidden:'비공개' };
 const date = (v) => v ? new Date(v).toLocaleString('ko-KR', { timeZone:'Asia/Seoul', dateStyle:'short', timeStyle:'short' }) : '별도 안내';
 const tag = (s) => '<span class="tag">' + esc(statuses[s] || s) + '</span>';
@@ -474,14 +474,46 @@ async function readRoster(e) {
     $('#roster-preview').innerHTML='<div class="notice">'+files.length+'개 파일 · '+data.length+'명 확인 · 신규 '+newCount+'명 / 기존 '+(data.length-newCount)+'명 (기존 코드 유지)</div><div class="table-wrap"><table><thead><tr><th>학번</th><th>이름</th><th>수업 반</th></tr></thead><tbody>'+data.map((s) => '<tr><td>'+s.grade+'-'+s.classNo+'-'+s.number+'</td><td>'+esc(s.name)+'</td><td>'+esc(s.courseClass || '')+'</td></tr>').join('')+'</tbody></table></div><div class="actions">'+(prepared.codes.length?'<button data-action="roster-codes">신규 학생 접속 코드 명단 다운로드</button>':'')+'<button class="primary" data-action="import-roster" '+(prepared.codes.length?'disabled':'')+'>이 명단 등록</button></div><p class="hint">이름의 (공동)·(위탁)은 제외했습니다. 원래 학번과 수업 반은 별도로 저장합니다. 새 학생은 첫 접속에서 PIN 등록을 선택해 숫자 4자리를 정하세요. 코드가 직접 입력된 파일만 코드 명단을 먼저 다운로드하세요. 원본 파일은 서버에 저장하지 않습니다.</p>';
   }catch(err){e.target.value='';$('#roster-preview').textContent=err.message;toast(err.message);}
 }
-async function reports() {
+function reportFilterStorageKey() { return 'life-science-lab:report-filters:' + state.groupId; }
+function loadReportFilters() {
+  if(state.reportFilterGroup===state.groupId)return;
+  state.reportFilterGroup=state.groupId;
+  state.reportFilters={assessmentId:'',status:'',course:''};
+  try {
+    const saved=JSON.parse(sessionStorage.getItem(reportFilterStorageKey()) || 'null');
+    if(saved && typeof saved==='object') for(const key of Object.keys(state.reportFilters)) if(typeof saved[key]==='string')state.reportFilters[key]=saved[key];
+  } catch {}
+}
+function rememberReportFilters() {
+  const assessment=$('#report-assessment'),status=$('#report-status'),course=$('#report-course');
+  if(assessment)state.reportFilters.assessmentId=assessment.value;
+  if(status)state.reportFilters.status=status.value;
+  if(course)state.reportFilters.course=course.value;
+  try { sessionStorage.setItem(reportFilterStorageKey(),JSON.stringify(state.reportFilters)); } catch {}
+}
+function restoreReportFilterValues() {
+  const pairs=[['#report-assessment','assessmentId'],['#report-status','status'],['#report-course','course']];
+  for(const [selector,key] of pairs) {
+    const select=$(selector);if(!select)continue;
+    select.value=state.reportFilters[key];
+    if(select.value!==state.reportFilters[key])state.reportFilters[key]='';
+  }
+  rememberReportFilters();
+}
+async function reports({refreshOnly=false}={}) {
+  loadReportFilters();rememberReportFilters();
+  if(refreshOnly && $('#report-table')){$('#report-table').setAttribute('aria-busy','true');$('#report-table').classList.add('is-refreshing');}
   const [r,s,a] = await Promise.all([api('reports.list'),api('students.list'),api('assessments.list')]);
   state.reports = r.reports; state.students = s.students; state.assessments = a.assessments;
-  $('#admin-content').innerHTML = '<div class="filters"><select id="report-assessment" aria-label="탐구 선택"><option value="">모든 탐구</option>' + a.assessments.map((v) => '<option value="' + v.id + '">' + esc(v.title) + '</option>').join('') + '</select><select id="report-status" aria-label="보고서 상태"><option value="">모든 상태</option>' +
-    Object.entries(statuses).filter(([k]) => ['draft','submitted','approved','revision','rejected'].includes(k)).map(([k,v]) => '<option value="' + k + '">' + v + '</option>').join('') + '</select><button data-action="export-reports">보고서 JSON 다운로드</button></div><div id="report-summary"></div><div class="panel table-wrap" id="report-table"></div>';
-  $('#report-status').insertAdjacentHTML('afterend','<select id="report-course" aria-label="수업 반"><option value="">모든 수업 반</option>'+[...new Set(s.students.flatMap((v) => v.courseClasses || []))].sort().map((c) => '<option>'+esc(c)+'</option>').join('')+'</select>');
-  $('#report-course').onchange=renderReportTable;
-  $('#report-assessment').onchange = renderReportTable; $('#report-status').onchange = renderReportTable; renderReportTable();
+  if(!refreshOnly || !$('#report-table')) {
+    $('#admin-content').innerHTML = '<div class="filters"><select id="report-assessment" aria-label="탐구 선택"><option value="">모든 탐구</option>' + a.assessments.map((v) => '<option value="' + v.id + '">' + esc(v.title) + '</option>').join('') + '</select><select id="report-status" aria-label="보고서 상태"><option value="">모든 상태</option>' +
+      Object.entries(statuses).filter(([k]) => ['draft','submitted','approved','revision','rejected'].includes(k)).map(([k,v]) => '<option value="' + k + '">' + v + '</option>').join('') + '</select><button data-action="export-reports">보고서 JSON 다운로드</button></div><div id="report-summary"></div><div class="panel table-wrap" id="report-table"></div>';
+    $('#report-status').insertAdjacentHTML('afterend','<select id="report-course" aria-label="수업 반"><option value="">모든 수업 반</option>'+[...new Set(s.students.flatMap((v) => v.courseClasses || []))].sort().map((c) => '<option>'+esc(c)+'</option>').join('')+'</select>');
+    restoreReportFilterValues();
+    for(const selector of ['#report-assessment','#report-status','#report-course'])$(selector).onchange=()=>{rememberReportFilters();renderReportTable();};
+  }
+  renderReportTable();
+  $('#report-table').removeAttribute('aria-busy');$('#report-table').classList.remove('is-refreshing');
 }
 async function trashReports() {
   const { reports: items } = await api('report.trash.list');
@@ -709,7 +741,13 @@ document.addEventListener('click', async (e) => {
         if(!(await state.saver.flush()))throw new Error('서버 저장을 완료한 후 제출하세요.');
         {const r=state.saver.report;await api('report.submit',{id:r.id,version:r.version,content:r.content});state.saver.stop();state.saver=null;$('#modal').close();toast('최종 제출했습니다. 선생님의 검토를 기다려 주세요.');await route();}break;
       case 'group-link':await copyText(studentAccessUrl());toast('현재 그룹의 학생 접속 링크를 복사했습니다.');break;
-      case 'refresh-admin':await admin();break;
+      case 'refresh-admin':
+        b.disabled=true;
+        try {
+          if(state.adminTab==='reports' && $('#report-table')){await reports({refreshOnly:true});toast('보고서 목록을 최신 내용으로 갱신했습니다.');}
+          else await admin();
+        } finally { b.disabled=false; }
+        break;
       case 'retry-assessments':state.assessmentError='';activities();break;
       case 'refresh-sheets':b.disabled=true;{const result=await api('sheets.refresh');toast(result.views?'구글 시트 한글 탭을 최신 내용으로 갱신했습니다.':'시트 갱신 요청을 완료했습니다.');b.disabled=false;}break;
       case 'roster-template':download('학생명단-양식.csv','\uFEFF학년도,학년,반,번호,이름,접속코드\n','text/csv;charset=utf-8');break;

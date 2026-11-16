@@ -88,6 +88,7 @@ try {
   await expect(page.locator('#printable-report')).toContainText('가상연구자1');
   await expect(page.locator('#printable-report')).toContainText('카탈레이스');
   await expect(page.locator('#printable-report h1')).toContainText('카탈레이스: 과산화수소를 분해하는 효소');
+  await expect(page.locator('#printable-report .report-subtitle')).toContainText('효소의 구조와 기능 탐구 · 세포와 물질대사 · 2026학년도');
   await expect(page.locator('#printable-report .report-intro')).toHaveCount(0);
   await expect(page.locator('#printable-report .report-part h2').first()).toContainText('효소 선정');
   await expect(page.locator('#printable-report .report-photo img')).toBeVisible();
@@ -118,6 +119,20 @@ try {
   await page.locator('[data-restore-report="demo-trash"]').click();
   await expect(page.locator('#admin-content')).toContainText('휴지통이 비어 있습니다');
   await page.locator('[data-tab=reports]').click();
+  const selectedAssessment=await page.locator('#report-assessment option:not([value=""])').first().getAttribute('value');
+  const selectedCourse=await page.locator('#report-course option:not([value=""])').first().textContent();
+  await page.locator('#report-assessment').selectOption(selectedAssessment);
+  await page.locator('#report-status').selectOption('submitted');
+  await page.locator('#report-course').selectOption(selectedCourse);
+  await page.locator('[data-action=refresh-admin]').click();
+  await expect(page.locator('#report-assessment')).toHaveValue(selectedAssessment);
+  await expect(page.locator('#report-status')).toHaveValue('submitted');
+  await expect(page.locator('#report-course')).toHaveValue(selectedCourse);
+  await page.reload();
+  await expect(page.locator('#report-assessment')).toHaveValue(selectedAssessment);
+  await expect(page.locator('#report-status')).toHaveValue('submitted');
+  await expect(page.locator('#report-course')).toHaveValue(selectedCourse);
+  await page.locator('#report-status').selectOption('');
   await expect(page.locator('[data-review]').first()).toBeVisible();
   await page.locator('[data-review]').first().click();
   await expect(page.locator('#printable-report .report-photo img')).toBeVisible();

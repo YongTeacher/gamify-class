@@ -28,8 +28,9 @@ test('optional enzyme photo is rendered only when a site image URL is supplied',
 
 test('학생이 쓴 탐구 주제가 보고서 제목이 되고 중복 주제·진행 상태 상자는 빠진다',()=>{
   const report={title:'효소의 구조와 기능 탐구',status:'rejected',fields:[{id:'topic',title:'탐구 주제',type:'text'},{id:'selection',title:'효소 선정',type:'text'}],content:{topic:'카탈레이스의 구조와 기능',selection:'카탈레이스'}};
-  const html=reportDocumentHTML(report);
+  const html=reportDocumentHTML(report,{year:2026},{subject:'세포와 물질대사'});
   assert.match(html,/<h1>카탈레이스의 구조와 기능<\/h1>/);
+  assert.match(html,/<p class="report-subtitle">효소의 구조와 기능 탐구 · 세포와 물질대사 · 2026학년도<\/p>/);
   assert.doesNotMatch(html,/report-intro|진행 상태|<h2>.*탐구 주제/);
   assert.match(html,/<span>01<\/span>효소 선정/);
   assert.match(reportFileName(report,{name:'가상 학생'}),/^카탈레이스의 구조와 기능_/);
