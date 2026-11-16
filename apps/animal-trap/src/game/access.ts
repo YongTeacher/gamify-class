@@ -19,18 +19,18 @@ export const PIN_LOCK_MS = 30_000;
 export type AccessError = 'BAD_KEY' | 'BAD_PIN' | 'PIN_LOCKED' | 'BAD_TEAM' | 'NOT_CONTROLLER' | 'NO_ROOM';
 
 /** 4자리 PIN 8개 (서로 다르게). rand() 는 [0,1) */
-export function makePins(rand: () => number): string[] {
+export function makePins(rand: () => number, count = TEAMS): string[] {
   const pins = new Set<string>();
-  while (pins.size < TEAMS) pins.add(String(Math.floor(rand() * 10000)).padStart(4, '0'));
+  while (pins.size < count) pins.add(String(Math.floor(rand() * 10000)).padStart(4, '0'));
   return [...pins];
 }
 
-export function makeCreds(makeKey: KeyGen, rand: () => number): Creds {
-  return { hostKey: makeKey(), tvKey: makeKey(), tvGen: 1, pins: makePins(rand), pinGen: Array(TEAMS).fill(1),
-    controlToken: Array(TEAMS).fill(null), controlGen: Array(TEAMS).fill(1), pinFails: Array.from({ length: TEAMS }, () => ({ count: 0, until: 0 })) };
+export function makeCreds(makeKey: KeyGen, rand: () => number, count = TEAMS): Creds {
+  return { hostKey: makeKey(), tvKey: makeKey(), tvGen: 1, pins: makePins(rand, count), pinGen: Array(count).fill(1),
+    controlToken: Array(count).fill(null), controlGen: Array(count).fill(1), pinFails: Array.from({ length: count }, () => ({ count: 0, until: 0 })) };
 }
 
-const validTeam = (t: unknown): t is number => Number.isInteger(t) && (t as number) >= 0 && (t as number) < TEAMS;
+const validTeam = (s: RoomState, t: unknown): t is number => Number.isInteger(t) && (t as number) >= 0 && (t as number) < s.creds.pins.length;
 
 export async function checkTeacher(s: RoomState, key: string, eq: Eq): Promise<boolean> { return eq(key, s.creds.hostKey); }
 export async function checkTv(s: RoomState, key: string, eq: Eq): Promise<boolean> { return eq(key, s.creds.tvKey); }
@@ -41,7 +41,7 @@ export async function checkTv(s: RoomState, key: string, eq: Eq): Promise<boolea
  */
 export async function attemptPin(s: RoomState, team: unknown, pin: string, now: number, eq: Eq):
   Promise<{ state: RoomState; error: AccessError | null }> {
-  if (!validTeam(team)) return { state: s, error: 'BAD_TEAM' };
+  if (!validTeam(s, team)) return { state: s, error: 'BAD_TEAM' };
   const fails = s.creds.pinFails[team];
   if (fails.until > now) return { state: s, error: 'PIN_LOCKED' };
   if (await eq(pin, s.creds.pins[team])) {
@@ -75,7 +75,7 @@ export async function join(s: RoomState, team: unknown, pin: string, now: number
  * 그래서 이 경로로는 PIN 정답 여부를 알아낼 수 없다(추측은 attemptPin 경로에서만, 실패 제한 적용).
  */
 export async function checkController(s: RoomState, team: unknown, pin: string, token: string, eq: Eq): Promise<AccessError | null> {
-  if (!validTeam(team)) return 'BAD_TEAM';
+  if (!validTeam(s, team)) return 'BAD_TEAM';
   const current = s.creds.controlToken[team];
   if (current === null || !(await eq(token, current))) return 'NOT_CONTROLLER';
   if (!(await eq(pin, s.creds.pins[team]))) return 'BAD_PIN';

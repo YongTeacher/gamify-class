@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { SPAWN_CELL, isOasis, neighbors, zoneOf } from '../src/game/board.ts';
 import { createRoom, handle, nextAlarm, DEFAULT_CONFIG, type Actor, type CommandIn, type RoomConfig, type RoomState } from '../src/game/room.ts';
 import { mainRemaining, phaseRemaining } from '../src/game/clock.ts';
+import { teacherView } from '../src/game/views.ts';
 import type { BankQuestion } from '../src/game/questions.ts';
 import type { Level } from '../src/game/types.ts';
 
@@ -17,7 +18,9 @@ const SYS: Actor = { kind: 'system' };
 class Sim {
   s: RoomState; now = 1_000_000;
   constructor(config: Partial<RoomConfig> = {}, seed = 7) {
-    const r = createRoom({ code: 'ABCD', title: '테스트', setName: '세트', config: { ...DEFAULT_CONFIG, ...config }, seed, creds }, bank, this.now);
+    const count = config.teamCount ?? 8;
+    const roomCreds = { ...creds, pins: creds.pins.slice(0, count), pinGen: creds.pinGen.slice(0, count), controlToken: creds.controlToken.slice(0, count), controlGen: creds.controlGen.slice(0, count), pinFails: creds.pinFails.slice(0, count) };
+    const r = createRoom({ code: 'ABCD', title: '테스트', setName: '세트', config: { ...DEFAULT_CONFIG, ...config }, seed, creds: roomCreds }, bank, this.now);
     if ('error' in r) throw new Error(r.error);
     this.s = r.state;
   }
@@ -25,7 +28,7 @@ class Sim {
   ok(actor: Actor, cmd: CommandIn) { const o = this.do(actor, cmd); assert.ok(o.result.ok, `${cmd.type}: ${JSON.stringify(o.result)}`); return o; }
   at(ms: number) { this.now += ms; return this.do(SYS, { type: 'tick' }); }
   /** 로비 → 진행(1라운드 이동 단계)까지 */
-  start() { this.ok(T, { type: 'draw' }); this.ok(T, { type: 'startSetup' }); for (let t = 0; t < 8; t++) this.ok(team(t), { type: 'trapConfirm' }); this.ok(T, { type: 'startGame' }); return this; }
+  start() { this.ok(T, { type: 'draw' }); this.ok(T, { type: 'startSetup' }); for (let t = 0; t < this.s.creds.pins.length; t++) this.ok(team(t), { type: 'trapConfirm' }); this.ok(T, { type: 'startGame' }); return this; }
   pos(t: number) { return this.s.committed!.teams[t].pos; }
   /** 지금 열린 이동 라운드 / 문제 라운드 / 결과 라운드 */
   r() { return this.s.committed!.round + 1; }
@@ -34,8 +37,39 @@ class Sim {
   /** 덫 없는 이웃 칸 하나 (오아시스 제외) */
   safeNeighbor(t: number) { const traps = this.s.committed!.traps; return neighbors(this.pos(t)).find((c) => !isOasis(c) && !traps.some((x) => x.active && x.cell === c))!; }
   trapNeighbor(t: number) { const traps = this.s.committed!.traps; return neighbors(this.pos(t)).find((c) => traps.some((x) => x.active && x.cell === c)); }
-  moveAll(pick: (t: number) => number | null) { for (let t = 0; t < 8; t++) { const to = pick(t); if (to !== null) this.do(team(t), { type: 'move', round: this.r(), to }); } }
+  moveAll(pick: (t: number) => number | null) { for (let t = 0; t < this.s.creds.pins.length; t++) { const to = pick(t); if (to !== null) this.do(team(t), { type: 'move', round: this.r(), to }); } }
 }
+
+test('선택한 4~8팀만 추첨·설치·이동·공개 화면에 참여하고 나머지 팀은 거절', () => {
+  for (const count of [4, 5, 6, 7, 8]) {
+    const sim = new Sim({ teamCount: count });
+    assert.equal(teacherView(sim.s, bank, sim.now).teams.length, count);
+    sim.ok(T, { type: 'draw' });
+    assert.equal(sim.s.zones!.length, count);
+    assert.equal(new Set(sim.s.zones).size, count);
+    sim.ok(T, { type: 'startSetup' });
+    assert.equal(sim.s.setupTraps!.length, count * 13);
+    if (count < 8) assert.deepEqual(sim.do(team(count), { type: 'trapConfirm' }).result, { ok: false, error: 'BAD_TEAM' });
+    for (let t = 0; t < count; t++) sim.ok(team(t), { type: 'trapConfirm' });
+    assert.equal(sim.s.phase, 'READY');
+    sim.ok(T, { type: 'startGame' });
+    assert.equal(sim.s.committed!.teams.length, count);
+    sim.moveAll((t) => sim.safeNeighbor(t));
+    assert.equal(sim.s.committed!.round, 1);
+    assert.equal(teacherView(sim.s, bank, sim.now).teams.length, count);
+  }
+  for (const teamCount of [3, 9, 4.5]) {
+    assert.deepEqual(createRoom({ code: 'X', title: 't', setName: 's', config: { ...DEFAULT_CONFIG, teamCount }, seed: 1, creds }, bank, 0), { error: 'BAD_CONFIG' });
+  }
+});
+
+test('기존 8팀 판에 teamCount 설정이 없어도 계속 진행된다', () => {
+  const sim = new Sim();
+  delete sim.s.config.teamCount;
+  assert.equal(teacherView(sim.s, bank, sim.now).config.teamCount, 8);
+  sim.start();
+  assert.equal(sim.s.committed!.teams.length, 8);
+});
 
 /** 팀 0 이 1라운드에 덫을 밟도록 팀 1 의 덫 하나를 팀 0 출발 칸 옆으로 옮긴 판 */
 function simWithTrapForTeam0(config: Partial<RoomConfig> = {}) {

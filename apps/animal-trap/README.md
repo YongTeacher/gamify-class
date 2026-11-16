@@ -1,6 +1,6 @@
 # 애니멀 트랩: 오아시스 쟁탈전
 
-8팀 실시간 수업 게임. 설계는 [DESIGN.md](DESIGN.md), 원본 기획서는 [docs/plan-v2.md](docs/plan-v2.md).
+4~8팀 실시간 수업 게임. 교사가 새 판을 만들 때 팀 수를 선택합니다. 설계는 [DESIGN.md](DESIGN.md), 원본 기획서는 [docs/plan-v2.md](docs/plan-v2.md).
 
 Cloudflare Worker `animal-trap` + Durable Object(판 하나 = 인스턴스 하나) + D1(문제은행·판 목록).
 계정 **bsy0708@korea.kr**. 운영 주소: `https://animal-trap.bsy0708.workers.dev`.

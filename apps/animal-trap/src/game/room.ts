@@ -22,12 +22,12 @@ import type { Committed, Pending, RoundEvent, Trap } from './types.ts';
 export type RoomPhase = 'LOBBY' | 'DRAWN' | 'TRAP_SETUP' | 'READY' | 'RUNNING' | 'FINISHED' | 'REVIEW';
 export type RoundStep = 'MOVE_OPEN' | 'QUESTION_OPEN' | 'ROUND_SUMMARY';
 
-export interface RoomConfig { durationMs: number; moveMs: number; quizMs: number; setupMs: number; autoNext: boolean }
+export interface RoomConfig { durationMs: number; moveMs: number; quizMs: number; setupMs: number; autoNext: boolean; teamCount?: number }
 export const SUMMARY_AUTO_MS = 5000;
 export const CONFIG_RANGE = {
   durationMs: [60_000, 60 * 60_000], moveMs: [10_000, 60_000], quizMs: [20_000, 120_000], setupMs: [60_000, 300_000]
 } as const;
-export const DEFAULT_CONFIG: RoomConfig = { durationMs: 15 * 60_000, moveMs: 20_000, quizMs: 45_000, setupMs: 120_000, autoNext: false };
+export const DEFAULT_CONFIG: RoomConfig = { durationMs: 15 * 60_000, moveMs: 20_000, quizMs: 45_000, setupMs: 120_000, autoNext: false, teamCount: TEAMS };
 
 /** 자격 정보 (3단계에서 검증에 쓴다). 어떤 학생·TV 뷰에도 나가지 않는다 */
 export interface Creds {
@@ -111,18 +111,21 @@ export function validateBank(bank: readonly BankQuestion[]): { error: CreateErro
 }
 
 export function validConfig(c: RoomConfig): boolean {
-  return (Object.keys(CONFIG_RANGE) as (keyof typeof CONFIG_RANGE)[]).every((k) => Number.isInteger(c[k]) && c[k] >= CONFIG_RANGE[k][0] && c[k] <= CONFIG_RANGE[k][1]) && typeof c.autoNext === 'boolean';
+  return (Object.keys(CONFIG_RANGE) as (keyof typeof CONFIG_RANGE)[]).every((k) => Number.isInteger(c[k]) && c[k] >= CONFIG_RANGE[k][0] && c[k] <= CONFIG_RANGE[k][1]) && typeof c.autoNext === 'boolean'
+    && (c.teamCount === undefined || (Number.isInteger(c.teamCount) && c.teamCount >= 4 && c.teamCount <= TEAMS));
 }
 
 export function createRoom(input: { code: string; title: string; setName: string; config: RoomConfig; seed: number; creds: Creds; createId?: string }, bank: readonly BankQuestion[], now: number): { state: RoomState; warnings: string[] } | { error: CreateError } {
   if (!validConfig(input.config)) return { error: 'BAD_CONFIG' };
+  const count = input.config.teamCount ?? TEAMS;
+  if (input.creds.pins.length !== count) return { error: 'BAD_CONFIG' };
   const v = validateBank(bank);
   if (v.error) return { error: v.error };
   const state: RoomState = {
-    v: 1, code: input.code, title: input.title, setName: input.setName, createdAt: now, createId: input.createId ?? '', config: input.config,
+    v: 1, code: input.code, title: input.title, setName: input.setName, createdAt: now, createId: input.createId ?? '', config: { ...input.config, teamCount: count },
     phase: 'LOBBY', step: null, stateVersion: 1, rngState: input.seed >>> 0,
-    zones: null, setupTraps: null, confirmed: Array(TEAMS).fill(false), committed: null, pending: null,
-    moves: Array(TEAMS).fill(null), answers: Array(TEAMS).fill(null), clock: newClock(input.config.durationMs),
+    zones: null, setupTraps: null, confirmed: Array(count).fill(false), committed: null, pending: null,
+    moves: Array(count).fill(null), answers: Array(count).fill(null), clock: newClock(input.config.durationMs),
     finishAfterRound: false, endReason: null, lastEvents: [], eventSeq: 0, cancelled: [], processed: {}, creds: input.creds,
     review: { revealed: [], trapsRevealed: false, display: 'ranking', focus: null }
   };
@@ -135,15 +138,15 @@ type Ctx = { s: RoomState; bank: readonly BankQuestion[]; now: number; events: E
 const round = (s: RoomState) => (s.committed?.round ?? 0) + 1;
 
 function finishSetup(c: Ctx) {
-  c.s.confirmed = Array(TEAMS).fill(true);
+  c.s.confirmed = Array(c.s.creds.pins.length).fill(true);
   c.s.phase = 'READY';
   c.s.clock = setPhase(c.s.clock, c.now, null);
 }
 
 function openMove(c: Ctx) {
   c.s.step = 'MOVE_OPEN';
-  c.s.moves = Array(TEAMS).fill(null);
-  c.s.answers = Array(TEAMS).fill(null);
+  c.s.moves = Array(c.s.creds.pins.length).fill(null);
+  c.s.answers = Array(c.s.creds.pins.length).fill(null);
   c.s.clock = setPhase(c.s.clock, c.now, c.s.config.moveMs);
   if (!movableTeams(c.s).length) lockMoves(c); // 전원 속박이면 기다릴 이유가 없다
 }
@@ -154,8 +157,8 @@ function finish(c: Ctx, reason: 'time' | 'manual') {
     for (const l of s.pending.landings) if (l.questionId !== null) s.cancelled.push({ round: s.pending.round, team: l.team, questionId: l.questionId });
     s.pending = null; // 진행 중 라운드 전체 폐기 (D5): 확정 상태는 land 가 건드리지 않았으므로 복원할 것이 없다
   }
-  s.moves = Array(TEAMS).fill(null);
-  s.answers = Array(TEAMS).fill(null);
+  s.moves = Array(s.creds.pins.length).fill(null);
+  s.answers = Array(s.creds.pins.length).fill(null);
   if (s.phase === 'RUNNING') s.clock = stopMain(s.clock, c.now);
   s.clock = setPhase({ ...s.clock, paused: false, phaseRemainingMs: null }, c.now, null);
   s.phase = 'FINISHED'; s.step = null; s.endReason = reason; s.finishAfterRound = false;
@@ -184,7 +187,7 @@ function lockMoves(c: Ctx) {
   const rng = makeRng(s.rngState);
   s.pending = land(s.committed, s.moves, (_team, level, asked) => pickQuestion(c.bank, level, asked, rng));
   s.rngState = rng.state();
-  s.answers = Array(TEAMS).fill(null);
+  s.answers = Array(s.creds.pins.length).fill(null);
   if (s.pending.landings.some((l) => l.questionId !== null)) { s.step = 'QUESTION_OPEN'; s.clock = setPhase(s.clock, c.now, s.config.quizMs); }
   else resolveRound(c);
 }
@@ -229,12 +232,12 @@ function apply(c: Ctx, actor: Actor, cmd: Command): CmdResult {
     switch (cmd.type) {
       case 'draw': // 로비에서 한 번만 (다시 추첨을 허용하면 늦게 도착한 옛 요청이 재추첨할 수 있다)
         if (s.phase !== 'LOBBY') return fail('BAD_PHASE');
-        { const rng = makeRng(s.rngState); s.zones = drawZones(rng); s.rngState = rng.state(); }
+        { const rng = makeRng(s.rngState); s.zones = drawZones(rng, s.creds.pins.length); s.rngState = rng.state(); }
         s.phase = 'DRAWN'; return OK;
       case 'startSetup': {
         if (s.phase !== 'DRAWN' || !s.zones) return fail('BAD_PHASE');
         const rng = makeRng(s.rngState); s.setupTraps = autoPlace(rng, s.zones); s.rngState = rng.state();
-        s.confirmed = Array(TEAMS).fill(false); s.phase = 'TRAP_SETUP';
+        s.confirmed = Array(s.creds.pins.length).fill(false); s.phase = 'TRAP_SETUP';
         s.clock = setPhase(s.clock, c.now, s.config.setupMs); return OK;
       }
       case 'startGame':
@@ -290,7 +293,7 @@ function apply(c: Ctx, actor: Actor, cmd: Command): CmdResult {
 
   // 팀
   const team = actor.team;
-  if (!Number.isInteger(team) || team < 0 || team >= TEAMS) return fail('BAD_TEAM');
+  if (!Number.isInteger(team) || team < 0 || team >= s.creds.pins.length) return fail('BAD_TEAM');
   if (s.clock.paused) return fail('PAUSED');
   switch (cmd.type) {
     case 'trapMove': case 'trapSwap': {

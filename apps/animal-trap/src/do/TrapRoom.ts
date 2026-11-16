@@ -81,7 +81,8 @@ export class TrapRoom extends DurableObject<Env> {
       if (input.createId && this.state.createId === input.createId) return ok({ hostKey: this.state.creds.hostKey, tvKey: this.state.creds.tvKey, pins: [...this.state.creds.pins], warnings: [] });
       return no('EXISTS');
     }
-    const creds = makeCreds(randomKey, rand);
+    if (!Number.isInteger(input.config.teamCount ?? 8) || (input.config.teamCount ?? 8) < 4 || (input.config.teamCount ?? 8) > 8) return no('BAD_CONFIG');
+    const creds = makeCreds(randomKey, rand, input.config.teamCount ?? 8);
     const seed = crypto.getRandomValues(new Uint32Array(1))[0];
     const r = createRoom({ ...input, seed, creds }, bank, Date.now());
     if ('error' in r) return no(r.error);
@@ -92,7 +93,7 @@ export class TrapRoom extends DurableObject<Env> {
 
   async lobby(): Promise<Envelope> {
     const s = this.state; if (!s) return no('NO_ROOM');
-    return ok({ title: s.title, phase: s.phase, joined: s.creds.controlToken.map((t) => t !== null) });
+    return ok({ title: s.title, phase: s.phase, teamCount: s.creds.pins.length, joined: s.creds.controlToken.map((t) => t !== null) });
   }
 
   async view(who: ViewRole): Promise<Envelope> {
@@ -111,6 +112,7 @@ export class TrapRoom extends DurableObject<Env> {
     const cmd = parseTeacherCommand(raw);
     if (!cmd) return no('BAD_REQUEST');
     if (isAccessCommand(cmd)) {
+      if (cmd.type !== 'reissueTv' && (cmd.team < 0 || cmd.team >= s.creds.pins.length)) return no('BAD_TEAM');
       const r = handleAccess(s, cmd, requestId, rand, randomKey); // 같은 requestId 재전송 = 같은 결과(재발급·해제 한 번만)
       if (!r.replay) await this.save(r.state);
       return ok(r.data);
@@ -124,7 +126,7 @@ export class TrapRoom extends DurableObject<Env> {
     const r = await join(s, team, pin, Date.now(), safeEqual, randomKey);
     if (r.state !== s) {
       // 실패 횟수는 조용히 저장. 조작권 발급·잠금 시작처럼 교사 화면이 바뀌는 경우만 버전을 올려 푸시
-      const t = Number.isInteger(team) && team >= 0 && team < 8 ? team : 0;
+      const t = Number.isInteger(team) && team >= 0 && team < s.creds.pins.length ? team : 0;
       const visible = r.state.creds.controlToken[t] !== s.creds.controlToken[t] || (r.state.creds.pinFails[t].until > 0) !== (s.creds.pinFails[t].until > 0);
       await this.save(r.state, visible);
     }

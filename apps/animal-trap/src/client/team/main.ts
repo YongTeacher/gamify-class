@@ -48,26 +48,47 @@ function renderEntry(message = '') {
   endSession();
   const h = parseHash();
   let team = h.team;
+  let available = ANIMALS.length;
+  let lookup = 0;
   app.innerHTML = `
     <section class="hero"><div class="logo" aria-hidden="true">🌴</div><h1>애니멀 트랩</h1><p class="muted">오아시스 쟁탈전 · 우리 팀 화면</p></section>
     <section class="card actions">
       ${message ? `<p role="alert" style="color:var(--danger);font-weight:700;margin:0">${esc(message)}</p>` : ''}
       <label class="field">판 코드<input id="code" inputmode="text" autocomplete="off" autocapitalize="characters" maxlength="6" value="${esc(h.code)}" placeholder="칠판의 6자리"></label>
-      <fieldset style="border:0;padding:0;margin:0"><legend style="font-weight:700;margin-bottom:6px">우리 팀</legend><div class="teams" id="teams">
+      <fieldset style="border:0;padding:0;margin:0"><legend style="font-weight:700;margin-bottom:6px">우리 팀 <span class="muted" id="teamHint"></span></legend><div class="teams" id="teams">
         ${ANIMALS.map((a, i) => { const [e, n] = a.split(' '); return `<button type="button" data-team="${i}" aria-pressed="${team === i}" style="--c:${TEAM_COLORS[i]}"><span class="e" aria-hidden="true">${e}</span>${n}</button>`; }).join('')}
       </div></fieldset>
       <label class="field">팀 PIN (4자리)<input id="pin" inputmode="numeric" autocomplete="off" maxlength="4" pattern="[0-9]{4}" placeholder="••••"></label>
       <button class="btn" id="go">입장하기</button>
     </section>`;
+  const teamButtons = $('#teams');
   $('#teams').onclick = (e) => {
     const b = (e.target as HTMLElement).closest('button[data-team]') as HTMLButtonElement | null; if (!b) return;
     team = Number(b.dataset.team);
     document.querySelectorAll('#teams button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
   };
+  const updateAvailable = async () => {
+    const code = $<HTMLInputElement>('#code').value.trim().toUpperCase();
+    const current = ++lookup;
+    if (!CODE_RE.test(code)) return;
+    const r = await call<{ teamCount: number }>(`/api/game/${code}/lobby`, {}, undefined, 'GET');
+    if (current !== lookup || document.getElementById('teams') !== teamButtons) return;
+    if (!r.ok || !Number.isInteger(r.data.teamCount) || r.data.teamCount < 4 || r.data.teamCount > 8) return;
+    available = r.data.teamCount;
+    document.querySelectorAll<HTMLButtonElement>('#teams button[data-team]').forEach((button) => { button.hidden = Number(button.dataset.team) >= available; });
+    $('#teamHint').textContent = `(${available}팀 참여)`;
+    if (team !== null && team >= available) {
+      team = null;
+      document.querySelectorAll('#teams button').forEach((button) => button.setAttribute('aria-pressed', 'false'));
+    }
+  };
+  $<HTMLInputElement>('#code').oninput = () => { available = ANIMALS.length; $('#teamHint').textContent = ''; document.querySelectorAll<HTMLButtonElement>('#teams button[data-team]').forEach((button) => { button.hidden = false; }); void updateAvailable(); };
+  if (h.code) void updateAvailable();
   $('#go').onclick = async () => {
     const code = $<HTMLInputElement>('#code').value.trim().toUpperCase(), pin = $<HTMLInputElement>('#pin').value.trim();
     if (!CODE_RE.test(code)) return toast('판 코드 6자리를 확인해 주세요.');
     if (team === null) return toast('우리 팀을 골라 주세요.');
+    if (team >= available) return toast('이 판에 참여하지 않는 팀입니다.');
     if (!/^\d{4}$/.test(pin)) return toast('PIN 4자리를 입력해 주세요.');
     const btn = $<HTMLButtonElement>('#go'); btn.disabled = true;
     const mine = sessionNo;

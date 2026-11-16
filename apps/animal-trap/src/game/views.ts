@@ -41,7 +41,7 @@ export interface FullTrap { cell: Cell; owner: number; type: TrapType; active: b
 export interface PublicView {
   code: string; title: string; phase: RoomPhase; step: RoundStep | null; round: number; stateVersion: number;
   serverNow: number; paused: boolean; mainRemainingMs: number; phaseRemainingMs: number | null;
-  config: { durationMs: number; moveMs: number; quizMs: number; setupMs: number; autoNext: boolean };
+  config: { durationMs: number; moveMs: number; quizMs: number; setupMs: number; autoNext: boolean; teamCount: number };
   teams: PublicTeam[]; events: PublicEvent[]; oasisArrivals: number; endReason: 'time' | 'manual' | null;
   trapMap: FullTrap[] | null;              // 종료 후 교사가 '덫 지도 공개'를 눌렀을 때만
   reviewQuestions: RevealedQuestion[];     // 복습에서 교사가 공개한 문항만
@@ -96,11 +96,12 @@ const finished = (s: RoomState) => s.phase === 'FINISHED' || s.phase === 'REVIEW
 
 function publicView(s: RoomState, bank: readonly BankQuestion[], now: number): PublicView {
   const c = s.committed, R = displayRound(s);
+  const count = s.creds.pins.length;
   // 시작 전에는 추첨된 출발 칸(공개 정보)에 서 있다
-  const positions: (Cell | null)[] = c ? c.teams.map((t, i) => (s.pending ? s.pending.landings[i].to : t.pos)) : s.zones ? s.zones.map((z) => SPAWN_CELL[z]) : Array(8).fill(null);
-  const scores = c ? c.teams.map((t) => t.score) : Array(8).fill(0);
+  const positions: (Cell | null)[] = c ? c.teams.map((t, i) => (s.pending ? s.pending.landings[i].to : t.pos)) : s.zones ? s.zones.map((z) => SPAWN_CELL[z]) : Array(count).fill(null);
+  const scores = c ? c.teams.map((t) => t.score) : Array(count).fill(0);
   const ranks = rankTeams(scores);
-  const teams: PublicTeam[] = ANIMALS.map((animal, team) => {
+  const teams: PublicTeam[] = ANIMALS.slice(0, count).map((animal, team) => {
     const t = c?.teams[team];
     const l = s.pending?.landings[team];
     return {
@@ -124,7 +125,7 @@ function publicView(s: RoomState, bank: readonly BankQuestion[], now: number): P
   return {
     code: s.code, title: s.title, phase: s.phase, step: s.step, round: R, stateVersion: s.stateVersion,
     serverNow: now, paused: s.clock.paused, mainRemainingMs: mainRemaining(s.clock, now), phaseRemainingMs: phaseRemaining(s.clock, now),
-    config: { durationMs: s.config.durationMs, moveMs: s.config.moveMs, quizMs: s.config.quizMs, setupMs: s.config.setupMs, autoNext: s.config.autoNext },
+    config: { durationMs: s.config.durationMs, moveMs: s.config.moveMs, quizMs: s.config.quizMs, setupMs: s.config.setupMs, autoNext: s.config.autoNext, teamCount: count },
     teams, events: s.lastEvents.map(publicEvent), oasisArrivals: c?.oasisArrivals ?? 0, endReason: s.endReason,
     trapMap: finished(s) && s.review.trapsRevealed ? fullTraps(s) : null,
     reviewQuestions: s.review.revealed.map((id) => bank.find((q) => q.id === id)).filter((q): q is BankQuestion => !!q).map(revealQ),

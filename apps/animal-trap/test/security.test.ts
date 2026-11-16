@@ -90,7 +90,7 @@ function paths(v: unknown, prefix = '', out = new Set<string>()): Set<string> {
   return out;
 }
 const PUBLIC = ['code', 'title', 'phase', 'step', 'round', 'stateVersion', 'serverNow', 'paused', 'mainRemainingMs', 'phaseRemainingMs',
-  'config.durationMs', 'config.moveMs', 'config.quizMs', 'config.setupMs', 'config.autoNext',
+  'config.durationMs', 'config.moveMs', 'config.quizMs', 'config.setupMs', 'config.autoNext', 'config.teamCount',
   'teams[]', 'teams[].team', 'teams[].animal.code', 'teams[].animal.name', 'teams[].animal.emoji', 'teams[].zone', 'teams[].pos', 'teams[].score', 'teams[].rank', 'teams[].oasisRank',
   'teams[].status.joined', 'teams[].status.setupConfirmed', 'teams[].status.moved', 'teams[].status.quiz', 'teams[].status.boundLeft', 'teams[].status.confusedLeft',
   'teams[].summary', 'teams[].summary.correct', 'teams[].summary.wrong', 'teams[].summary.zones', 'teams[].summary.oasisRank',

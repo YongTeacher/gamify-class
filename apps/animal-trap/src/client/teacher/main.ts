@@ -48,6 +48,7 @@ function renderHome() {
         <label>판 제목<input id="title" maxlength="60" placeholder="예: 2학년 3반 효소 단원"></label>
         <label>문제 세트 이름 <span class="muted" style="font-weight:400">(비우면 문제은행 전체)</span><input id="setName" maxlength="60" list="setNames" placeholder="비밀번호를 넣으면 세트 목록이 떠요"></label><datalist id="setNames"></datalist>
         <div class="grid2">
+          <label>팀 수<select id="teamCount">${[4, 5, 6, 7, 8].map((n) => `<option value="${n}"${n === 8 ? ' selected' : ''}>${n}팀</option>`).join('')}</select></label>
           <label>게임 시간(분)<input id="durationMin" type="number" min="1" max="60" value="15"></label>
           <label>이동 시간(초)<input id="moveSec" type="number" min="10" max="60" value="20"></label>
           <label>문제 시간(초)<input id="quizSec" type="number" min="20" max="120" value="45"></label>
@@ -83,7 +84,7 @@ async function fillSetNames() {
 async function createGame() {
   const num = (id: string) => Number(($('#' + id) as HTMLInputElement).value);
   const body = { title: ($('#title') as HTMLInputElement).value, setName: ($('#setName') as HTMLInputElement).value,
-    durationMin: num('durationMin'), moveSec: num('moveSec'), quizSec: num('quizSec'), setupSec: num('setupSec'), autoNext: ($('#autoNext') as HTMLInputElement).checked };
+    teamCount: num('teamCount'), durationMin: num('durationMin'), moveSec: num('moveSec'), quizSec: num('quizSec'), setupSec: num('setupSec'), autoNext: ($('#autoNext') as HTMLInputElement).checked };
   const pw = ($('#admin') as HTMLInputElement).value;
   if (!pw) return toast('관리자 비밀번호를 입력해 주세요.');
   const btn = $<HTMLButtonElement>('#create'); btn.disabled = true;
@@ -91,7 +92,7 @@ async function createGame() {
   const r = await call<{ code: string; hostKey: string; warnings: string[] }>('/api/game', { 'X-Admin-Password': pw }, body);
   if (mine !== sessionNo) return;
   btn.disabled = false;
-  if (!r.ok) return toast(r.error === 'BANK_EMPTY_LEVEL' ? '문제 세트에 쉬움·보통·어려움 문제가 각각 1개 이상 있어야 해요.' : r.error === 'BAD_CONFIG' ? '시간 설정이 범위를 벗어났어요.' : r.error === 'ADMIN_DENIED' ? '관리자 비밀번호가 맞지 않아요.' : errText(r.error));
+  if (!r.ok) return toast(r.error === 'BANK_EMPTY_LEVEL' ? '문제 세트에 쉬움·보통·어려움 문제가 각각 1개 이상 있어야 해요.' : r.error === 'BAD_CONFIG' ? '팀 수 또는 시간 설정을 확인해 주세요.' : r.error === 'ADMIN_DENIED' ? '관리자 비밀번호가 맞지 않아요.' : errText(r.error));
   const g: Saved = { code: r.data.code, hostKey: r.data.hostKey, title: body.title || '애니멀 트랩', createdAt: Date.now() };
   remember(g);
   if (r.data.warnings.length) toast(r.data.warnings.join(' / '));
@@ -216,7 +217,7 @@ function controls(v: TeacherView, off: string): string {
   if (v.phase === 'FINISHED') main = b('review', '📖 문제 복습 시작', 'btn', busy ? 'disabled' : '');
   const fin = v.phase === 'FINISHED' || v.phase === 'REVIEW';
   const traps = fin ? (v.trapMap ? b('showMap', `🗺 TV에 덫 지도${v.reviewDisplay.mode === 'map' ? ' (표시 중)' : ''}`, 'btn ghost', busy ? 'disabled' : '') : b('revealTraps', '🗺 전체 덫 지도 공개(TV·학생)', 'btn ghost', busy ? 'disabled' : '')) + b('showRanking', `🏆 TV에 순위${v.reviewDisplay.mode === 'ranking' ? ' (표시 중)' : ''}`, 'btn ghost', busy ? 'disabled' : '') : '';
-  const setup = v.phase === 'TRAP_SETUP' ? `<p class="muted" style="margin:0">설치 확정 ${v.teams.filter((t) => t.status.setupConfirmed).length}/8팀 · 시간이 끝나면 나머지는 자동 확정돼요.</p>` : '';
+  const setup = v.phase === 'TRAP_SETUP' ? `<p class="muted" style="margin:0">설치 확정 ${v.teams.filter((t) => t.status.setupConfirmed).length}/${v.teams.length}팀 · 시간이 끝나면 나머지는 자동 확정돼요.</p>` : '';
   const events = v.phase === 'RUNNING' && v.step === 'ROUND_SUMMARY' && v.events.length ? `<p class="muted" style="margin:0">${roundSummary(v)}</p>` : '';
   return `<section class="card noprint" style="display:grid;gap:10px"><div class="row">${main}${pause}${finish}${traps}</div>${setup}${events}</section>`;
 }

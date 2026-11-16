@@ -8,6 +8,7 @@ label.field { display: grid; gap: 6px; font-weight: 700; }
 .field input { padding: 14px; border-radius: 12px; border: 2px solid var(--line); background: #fff; font-size: 1.2rem; letter-spacing: .2em; text-align: center; }
 .teams { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .teams button { padding: 10px 4px; background: #fff; border: 3px solid transparent; display: grid; gap: 2px; place-items: center; font-weight: 700; box-shadow: var(--shadow); }
+.teams button[hidden] { display: none; }
 .teams button .e { font-size: 1.8rem; }
 .teams button[aria-pressed="true"] { border-color: var(--c); background: color-mix(in srgb, var(--c) 14%, #fff); }
 .teams button[aria-pressed="true"]::after { content: '✓ 선택'; font-size: .75rem; color: var(--ink); }

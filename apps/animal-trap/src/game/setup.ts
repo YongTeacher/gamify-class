@@ -14,8 +14,8 @@ export const TRAPS_PER_TEAM = TRAP_TYPES.length; // 13
 /** 어느 팀의 출발 구역도 아니고 오아시스도 아닌 칸에만 설치 */
 export const canPlace = (_zone: number, cell: Cell): boolean => isCell(cell) && !isOasis(cell) && zoneOf(cell) === -1;
 
-/** 8팀에 출발 구역을 중복 없이 무작위 배정. 결과[t] = 구역 id */
-export const drawZones = (rng: Rng): number[] => shuffle(rng, [...Array(TEAMS).keys()]);
+/** 참여 팀에 8개 출발 구역 중 서로 다른 곳을 무작위 배정. 결과[t] = 구역 id */
+export const drawZones = (rng: Rng, count = TEAMS): number[] => shuffle(rng, [...Array(TEAMS).keys()]).slice(0, count);
 
 export function newTeam(zone: number): TeamState {
   const spawn = SPAWN_CELL[zone];
@@ -59,11 +59,12 @@ export function swapTraps(traps: Trap[], team: number, a: number, b: number): Tr
 
 /** 설치 결과 검증 (서버가 확정 전에 항상 부른다): 구역 배정·총 개수·소유자·id 유일성·활성·칸·종류 */
 export function validPlacement(traps: readonly Trap[], zones: readonly number[]): boolean {
-  if (zones.length !== TEAMS || [...zones].sort().join() !== [...Array(TEAMS).keys()].join()) return false;
-  if (traps.length !== TEAMS * TRAPS_PER_TEAM) return false;
+  const count = zones.length;
+  if (count < 4 || count > TEAMS || new Set(zones).size !== count || zones.some((z) => !Number.isInteger(z) || z < 0 || z >= TEAMS)) return false;
+  if (traps.length !== count * TRAPS_PER_TEAM) return false;
   if (new Set(traps.map((t) => t.id)).size !== traps.length) return false;
-  if (traps.some((t) => !Number.isInteger(t.id) || !Number.isInteger(t.owner) || t.owner < 0 || t.owner >= TEAMS || t.active !== true)) return false;
-  for (let team = 0; team < TEAMS; team++) {
+  if (traps.some((t) => !Number.isInteger(t.id) || !Number.isInteger(t.owner) || t.owner < 0 || t.owner >= count || t.active !== true)) return false;
+  for (let team = 0; team < count; team++) {
     const mine = traps.filter((t) => t.owner === team);
     if (mine.length !== TRAPS_PER_TEAM) return false;
     if (new Set(mine.map((t) => t.cell)).size !== mine.length) return false;

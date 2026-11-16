@@ -83,7 +83,7 @@ function renderControls(v: TvView) {
     actions.push(button(v.trapMap ? '🗺 덫 지도' : '🗺 덫 지도 공개', { type: 'revealTraps' }));
     actions.push(button('🏆 순위 보기', { type: 'showRanking' }));
   }
-  root.innerHTML = `<div class="control-title"><b>교사 진행</b><span>${v.phase === 'TRAP_SETUP' ? `설치 확정 ${v.teams.filter((team) => team.status.setupConfirmed).length}/8` : '이 브라우저에서만 조작'}</span></div><div class="control-actions"></div><p id="controlNotice" class="control-notice" role="status" hidden></p>`;
+  root.innerHTML = `<div class="control-title"><b>교사 진행</b><span>${v.phase === 'TRAP_SETUP' ? `설치 확정 ${v.teams.filter((team) => team.status.setupConfirmed).length}/${v.teams.length}` : '이 브라우저에서만 조작'}</span></div><div class="control-actions"></div><p id="controlNotice" class="control-notice" role="status" hidden></p>`;
   const list = root.querySelector('.control-actions')!;
   for (const action of actions) {
     const el = document.createElement('button');
@@ -156,7 +156,7 @@ function render() {
   $('#stepLabel').textContent = v.paused ? '⏸ 잠시 멈춤' : v.phase === 'RUNNING' ? `${v.round}라운드 · ${STEP[v.step ?? '']}` : PHASE[v.phase];
   // 단계 시계가 없을 때 초록 칸이 비지 않게 — 큰 글씨로 지금 상황
   const joined = v.teams.filter((t) => t.status.joined).length;
-  idleText = v.paused ? '⏸' : v.phase === 'LOBBY' ? `${joined}/8 입장` : v.phase === 'DRAWN' ? '추첨 완료' : v.phase === 'READY' ? '곧 시작' : v.phase === 'RUNNING' && v.step === 'ROUND_SUMMARY' ? '결과 발표' : v.phase === 'FINISHED' ? '🏁' : v.phase === 'REVIEW' ? '📖' : '';
+  idleText = v.paused ? '⏸' : v.phase === 'LOBBY' ? `${joined}/${v.teams.length} 입장` : v.phase === 'DRAWN' ? '추첨 완료' : v.phase === 'READY' ? '곧 시작' : v.phase === 'RUNNING' && v.step === 'ROUND_SUMMARY' ? '결과 발표' : v.phase === 'FINISHED' ? '🏁' : v.phase === 'REVIEW' ? '📖' : '';
   const order = [...v.teams].sort((a, b) => a.rank - b.rank || a.team - b.team);
   const status = (t: TvView['teams'][number]) => {
     if (v.phase === 'TRAP_SETUP') return t.status.setupConfirmed ? '설치 확정' : '설치 중';

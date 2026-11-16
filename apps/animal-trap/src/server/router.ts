@@ -72,9 +72,11 @@ function configFrom(b: Record<string, unknown>): RoomConfig | null {
   const ms = (v: unknown, unit: number, def: number) => (v === undefined ? def : Number.isInteger(v) ? (v as number) * unit : NaN);
   const c: RoomConfig = {
     durationMs: ms(b.durationMin, 60_000, 15 * 60_000), moveMs: ms(b.moveSec, 1000, 20_000),
-    quizMs: ms(b.quizSec, 1000, 45_000), setupMs: ms(b.setupSec, 1000, 120_000), autoNext: b.autoNext === true
+    quizMs: ms(b.quizSec, 1000, 45_000), setupMs: ms(b.setupSec, 1000, 120_000), autoNext: b.autoNext === true,
+    teamCount: b.teamCount === undefined ? 8 : typeof b.teamCount === 'number' ? b.teamCount : NaN
   };
   for (const k of Object.keys(CONFIG_RANGE) as (keyof typeof CONFIG_RANGE)[]) if (!(c[k] >= CONFIG_RANGE[k][0] && c[k] <= CONFIG_RANGE[k][1])) return null;
+  if (!Number.isInteger(c.teamCount) || c.teamCount! < 4 || c.teamCount! > 8) return null;
   return c;
 }
 
