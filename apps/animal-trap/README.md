@@ -3,7 +3,7 @@
 8팀 실시간 수업 게임. 설계는 [DESIGN.md](DESIGN.md), 원본 기획서는 [docs/plan-v2.md](docs/plan-v2.md).
 
 Cloudflare Worker `animal-trap` + Durable Object(판 하나 = 인스턴스 하나) + D1(문제은행·판 목록).
-계정 **baesisi3648** (애니멀 더비와 같은 계정, 별도 Worker — 아무것도 공유하지 않는다).
+계정 **bsy0708@korea.kr**. 운영 주소: `https://animal-trap.bsy0708.workers.dev`.
 
 ## 개발
 
@@ -27,10 +27,10 @@ BASE=http://localhost:8787 ADMIN_PASSWORD=<로컬용> node scripts/e2e.ts
 ## 배포
 
 ```sh
-npx wrangler login                      # baesisi3648
+npx wrangler login                      # bsy0708@korea.kr
 npm run deploy                          # 테스트 → 빌드 → 배포
 ```
-D1 `animal-trap`(APAC)과 `ADMIN_PASSWORD` secret 은 2026-11-13 등록 완료.
+D1 `animal-trap`(APAC)은 2026-11-16 선생님 계정에 별도로 생성했습니다. 운영 전 `ADMIN_PASSWORD` secret 등록과 문제은행 이전을 확인하세요.
 새 migration 이 생기면 `npx wrangler d1 migrations apply animal-trap --remote`.
 
 ## 기록

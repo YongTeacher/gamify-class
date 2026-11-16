@@ -49,7 +49,7 @@
 ```
 apps/animal-trap/
   DESIGN.md · docs/plan-v2.md
-  wrangler.jsonc               Worker "animal-trap" (계정 baesisi3648), DO new_sqlite_classes
+  wrangler.jsonc               Worker "animal-trap" (계정 bsy0708@korea.kr), DO new_sqlite_classes
   migrations/                  D1: 문제은행·판 목록
   src/game/                    순수 규칙 엔진 (DO·테스트·시뮬레이션이 같은 코드)
     board.ts rules.ts round.ts setup.ts questions.ts clock.ts views.ts types.ts

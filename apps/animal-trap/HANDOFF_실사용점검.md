@@ -10,14 +10,14 @@
 
 | 용도 | 주소 |
 |---|---|
-| 교사 화면 (판 만들기·진행) | https://animal-trap.baesisi3648.workers.dev/teacher |
-| 학생 입장 (폰) | https://animal-trap.baesisi3648.workers.dev/ |
-| 문제은행 (문제 넣기·내보내기) | https://animal-trap.baesisi3648.workers.dev/admin |
-| 사용 안내 (규칙·진행 순서) | https://animal-trap.baesisi3648.workers.dev/guide |
+| 교사 화면 (판 만들기·진행) | https://animal-trap.bsy0708.workers.dev/teacher |
+| 학생 입장 (폰) | https://animal-trap.bsy0708.workers.dev/ |
+| 문제은행 (문제 넣기·내보내기) | https://animal-trap.bsy0708.workers.dev/admin |
+| 사용 안내 (규칙·진행 순서) | https://animal-trap.bsy0708.workers.dev/guide |
 | TV 화면 | 교사 화면의 **‘📺 TV 화면 열기’** 버튼으로만 엽니다(주소에 열쇠가 담겨 있어 따로 적어 두지 않음) |
 
 - 관리자 비밀번호는 Cloudflare 비밀값 `ADMIN_PASSWORD` 입니다. **이 문서에 적지 않습니다.**
-  지금 값은 짧아서 바꾸길 권합니다: 저장소의 `apps/animal-trap` 폴더에서 `npx wrangler secret put ADMIN_PASSWORD`.
+  새 계정 배포 뒤 저장소의 `apps/animal-trap` 폴더에서 `npx wrangler secret put ADMIN_PASSWORD`로 등록합니다.
 
 ---
 
@@ -31,7 +31,7 @@
   - 난이도별 10문항(30문항): 고급 생명과학 - 생명과학 영역 · 생명체의 구성 물질 · 세포소기관과 세포막 · 세포소기관의 구조와 기능
     → 판을 만들 때 '12문항 미만' 경고가 뜹니다(진행은 됨, 같은 팀이 같은 문제를 다시 받을 수 있음).
   - 세트 이름을 비우면 228문항 전체를 씁니다.
-  - **추가한 54문항은 이 앱에만** 있습니다(더비에는 없음). 더비에도 쓰려면 /admin 에서 세트를 내보내 더비에서 가져오세요.
+  - 형 계정에 있던 문제은행은 새 D1에 자동으로 옮겨지지 않습니다. 기존 /admin에서 세트별로 내보낸 뒤 새 주소의 /admin에서 가져와야 합니다.
   더비에서 문제를 고쳐도 여기는 자동으로 바뀌지 않습니다 — 더비에서 내보내기 → 여기 /admin 에서 '교체'로 넣으세요.
 - [ ] **실제 폰 2~3대로 미니 판** — 판 만들기 → QR로 입장 → 덫 설치 → 이동 → 덫 칸에서 문제 → 결과 → 종료 → 복습
 - [ ] **학교 와이파이에서** 접속되는지 (학교망이 workers.dev 를 막는 경우가 있음)
@@ -105,7 +105,7 @@
 ```bash
 npm test                 # 타입 검사 + 단위 테스트 88개
 npm run e2e:faults       # 실제 서버를 띄워 장애 상황 검사(재시작 복원·시간 초과·소켓 한도 등, 약 2분)
-npm run deploy           # 테스트 → 빌드 → Cloudflare 배포 (계정 baesisi3648)
+npm run deploy           # 테스트 → 빌드 → Cloudflare 배포 (계정 bsy0708@korea.kr)
 ```
 
 - 전체 한 판 E2E: `npx wrangler dev --local --port 8789 --var ADMIN_PASSWORD:아무값` 을 띄운 뒤
