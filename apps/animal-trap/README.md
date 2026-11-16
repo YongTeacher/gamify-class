@@ -30,7 +30,7 @@ BASE=http://localhost:8787 ADMIN_PASSWORD=<로컬용> node scripts/e2e.ts
 npx wrangler login                      # bsy0708@korea.kr
 npm run deploy                          # 테스트 → 빌드 → 배포
 ```
-D1 `animal-trap`(APAC)은 2026-11-16 선생님 계정에 별도로 생성했습니다. 운영 전 `ADMIN_PASSWORD` secret 등록과 문제은행 이전을 확인하세요.
+D1 `animal-trap`(APAC)은 2026-11-16 선생님 계정에 별도로 생성했습니다. `ADMIN_PASSWORD` secret을 등록하고 기존 문제은행 7세트·228문항을 이전했습니다. 형 계정 데이터와 자동 동기화되지는 않습니다.
 새 migration 이 생기면 `npx wrangler d1 migrations apply animal-trap --remote`.
 
 ## 기록
