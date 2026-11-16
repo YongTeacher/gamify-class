@@ -57,23 +57,47 @@ export function draw(canvas: HTMLCanvasElement, m: BoardModel, t = performance.n
   const pulse = reduce ? 0.6 : 0.5 + 0.5 * Math.sin(t / 380);
 
   g.clearRect(0, 0, css, css);
-  // 풀밭 바둑판
+  // 좌표에 고정된 숲 바닥 질감: 모든 기기에서 같은 지형을 본다.
   for (let r = v.r0; r < v.r0 + v.n; r++) for (let c = v.c0; c < v.c0 + v.n; c++) {
-    g.fillStyle = (r + c) % 2 ? '#a8d68a' : '#9ccf7c';
-    g.fillRect((c - v.c0) * cs, (r - v.r0) * cs, cs + 0.5, cs + 0.5);
+    const x = (c - v.c0) * cs, y = (r - v.r0) * cs;
+    const seed = (r * 92821 + c * 68917 + r * c * 137) >>> 0;
+    const nearWater = Math.abs(r - 7.5) + Math.abs(c - 7.5) < 5;
+    g.fillStyle = nearWater ? ['#a1cb86', '#a9d090', '#97c47e'][seed % 3] : ['#8eb968', '#98c176', '#9fc681', '#8ab467'][seed % 4];
+    g.fillRect(x, y, cs + .5, cs + .5);
+    g.fillStyle = 'rgba(255,255,221,.12)'; g.fillRect(x + cs * .05, y + cs * .04, cs * .88, cs * .13);
+    g.fillStyle = seed % 7 === 0 ? 'rgba(49,101,50,.15)' : 'rgba(52,108,49,.09)';
+    g.beginPath(); g.ellipse(x + cs * ((seed % 5 + 2) / 9), y + cs * ((seed % 7 + 2) / 11), cs * .3, cs * .13, -.3, 0, Math.PI * 2); g.fill();
+    if (cs >= 19 && seed % 3 !== 0) {
+      const tx = x + cs * (.2 + (seed % 5) * .13), ty = y + cs * (.64 + (seed % 3) * .09);
+      g.strokeStyle = 'rgba(35,95,48,.36)'; g.lineWidth = Math.max(1, cs * .025); g.lineCap = 'round';
+      g.beginPath(); g.moveTo(tx, ty); g.lineTo(tx - cs * .055, ty - cs * .12); g.moveTo(tx, ty); g.lineTo(tx + cs * .06, ty - cs * .14); g.stroke();
+      if (seed % 13 === 0) { g.fillStyle = '#ffe9a8'; g.beginPath(); g.arc(tx + cs * .1, ty - cs * .05, cs * .045, 0, Math.PI * 2); g.fill(); }
+    }
   }
   // 출발 구역 (팀 색 옅게, 구역 경계)
   m.zones.forEach((z, team) => {
     if (z === null) return;
-    for (const cell of ZONES[z]) if (visible(cell)) { const [x, y] = xy(cell); g.fillStyle = TEAM_COLORS[team] + '40'; g.fillRect(x, y, cs, cs); }
+    for (const cell of ZONES[z]) if (visible(cell)) { const [x, y] = xy(cell); g.fillStyle = TEAM_COLORS[team] + '42'; g.fillRect(x, y, cs, cs); }
   });
-  ZONES.forEach((z) => { const [x, y] = xy(z[0]); g.strokeStyle = 'rgba(40,70,30,.55)'; g.lineWidth = 1.5; g.setLineDash([3, 3]); g.strokeRect(x + 1, y + 1, cs * 2 - 2, cs * 2 - 2); g.setLineDash([]); });
+  ZONES.forEach((z, i) => { const [x, y] = xy(z[0]); const team = m.zones.indexOf(i);
+    g.fillStyle = 'rgba(19,57,31,.20)'; g.fillRect(x + 3, y + cs * 2 - 2, cs * 2 - 4, Math.max(2, cs * .08));
+    g.strokeStyle = team < 0 ? 'rgba(40,70,30,.55)' : TEAM_COLORS[team]; g.lineWidth = Math.max(1.5, cs * .065);
+    g.strokeRect(x + 2, y + 2, cs * 2 - 4, cs * 2 - 4);
+    if (team >= 0 && cs >= 24) { g.fillStyle = '#fffaf0'; g.beginPath(); g.roundRect(x + cs * .12, y + cs * .12, cs * .58, cs * .35, cs * .1); g.fill();
+      g.fillStyle = '#23462b'; g.font = `800 ${cs * .22}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('출발', x + cs * .41, y + cs * .30); }
+  });
   // 오아시스
-  { const [x, y] = xy(OASIS[0]); const grad = g.createRadialGradient(x + cs, y + cs, cs * 0.2, x + cs, y + cs, cs * 1.3);
-    grad.addColorStop(0, '#7fe3f0'); grad.addColorStop(1, '#2aa3a0'); g.fillStyle = grad; g.beginPath(); g.roundRect(x + 1, y + 1, cs * 2 - 2, cs * 2 - 2, cs * 0.5); g.fill();
-    g.fillStyle = 'rgba(255,255,255,.75)'; g.font = `${cs * 0.9}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('🌴', x + cs, y + cs); }
+  { const [x, y] = xy(OASIS[0]); const cx = x + cs, cy = y + cs;
+    g.fillStyle = 'rgba(28,79,47,.32)'; g.beginPath(); g.ellipse(cx, cy + cs * .12, cs * 1.13, cs * 1.02, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#d9cb83'; g.beginPath(); g.ellipse(cx, cy, cs * 1.04, cs * .95, 0, 0, Math.PI * 2); g.fill();
+    const water = g.createRadialGradient(cx - cs * .28, cy - cs * .28, cs * .12, cx, cy, cs * 1.02);
+    water.addColorStop(0, '#9ff5e8'); water.addColorStop(.55, '#3bc7c7'); water.addColorStop(1, '#167e99');
+    g.fillStyle = water; g.beginPath(); g.ellipse(cx, cy, cs * .91, cs * .82, 0, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = 'rgba(235,255,246,.76)'; g.lineWidth = Math.max(1, cs * .035);
+    for (const scale of [.55, .75]) { g.beginPath(); g.ellipse(cx, cy, cs * scale, cs * scale * .88, 0, .2, Math.PI * 1.1); g.stroke(); }
+    g.fillStyle = 'rgba(255,255,255,.9)'; g.font = `${cs * 0.85}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('🌴', cx, cy); }
   // 격자선
-  g.strokeStyle = 'rgba(30,60,25,.18)'; g.lineWidth = 1;
+  g.strokeStyle = 'rgba(26,72,37,.27)'; g.lineWidth = Math.max(.8, cs * .018);
   for (let i = 0; i <= v.n; i++) { g.beginPath(); g.moveTo(i * cs, 0); g.lineTo(i * cs, css); g.moveTo(0, i * cs); g.lineTo(css, i * cs); g.stroke(); }
   // 방문 흔적
   for (const cell of m.visited ?? []) if (visible(cell)) { const [x, y] = xy(cell); g.fillStyle = 'rgba(255,255,230,.28)'; g.fillRect(x + 2, y + 2, cs - 4, cs - 4); }
@@ -118,9 +142,15 @@ export function draw(canvas: HTMLCanvasElement, m: BoardModel, t = performance.n
       // 1마리: 가운데 / 2~4마리: 2×2 / 5마리 이상: 3×3 칸 나눠 앉히기
       const n = list.length, grid = n === 1 ? 1 : n <= 4 ? 2 : 3, size = cs * (n === 1 ? 0.78 : grid === 2 ? 0.48 : 0.34);
       const ox = cs * ((i % grid) + 0.5) / grid, oy = cs * (Math.floor(i / grid) + 0.5) / grid;
-      if (a.highlight) { g.fillStyle = `rgba(255,255,255,${0.5 + 0.4 * pulse})`; g.beginPath(); g.arc(x + ox, y + oy, size * 0.62, 0, Math.PI * 2); g.fill(); }
-      g.strokeStyle = TEAM_COLORS[a.team]; g.lineWidth = n === 1 ? 3 : 2; g.beginPath(); g.arc(x + ox, y + oy, size * 0.55, 0, Math.PI * 2); g.stroke();
-      g.font = `${size}px system-ui`; g.fillText(a.emoji, x + ox, y + oy + 1);
+      const cx = x + ox, cy = y + oy, radius = size * .56;
+      g.save();
+      g.shadowColor = 'rgba(17,52,29,.42)'; g.shadowBlur = size * .22; g.shadowOffsetY = size * .16;
+      g.fillStyle = '#fef8e7'; g.beginPath(); g.arc(cx, cy, radius, 0, Math.PI * 2); g.fill();
+      g.restore();
+      g.strokeStyle = TEAM_COLORS[a.team]; g.lineWidth = Math.max(2, size * .105); g.beginPath(); g.arc(cx, cy, radius, 0, Math.PI * 2); g.stroke();
+      g.strokeStyle = 'rgba(255,255,255,.82)'; g.lineWidth = Math.max(1, size * .025); g.beginPath(); g.arc(cx, cy, radius * .79, Math.PI * 1.1, Math.PI * 1.85); g.stroke();
+      if (a.highlight) { g.strokeStyle = `rgba(255,252,179,${.55 + .4 * pulse})`; g.lineWidth = size * .12; g.beginPath(); g.arc(cx, cy, radius * 1.13, 0, Math.PI * 2); g.stroke(); }
+      g.font = `${size * .86}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(a.emoji, cx, cy + size * .03);
     });
   }
   // 센서 숫자 (내 위치 위)

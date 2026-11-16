@@ -11,8 +11,8 @@ export const NORMAL_TRAPS = 10;
 export const TRAP_TYPES: readonly TrapType[] = [...Array<TrapType>(NORMAL_TRAPS).fill('normal'), 'return', 'bind', 'confuse'];
 export const TRAPS_PER_TEAM = TRAP_TYPES.length; // 13
 
-/** 팀 t 가 덫을 놓을 수 있는 칸: 오아시스 아님, 자기 출발 구역 아님 */
-export const canPlace = (zone: number, cell: Cell): boolean => isCell(cell) && !isOasis(cell) && zoneOf(cell) !== zone;
+/** 어느 팀의 출발 구역도 아니고 오아시스도 아닌 칸에만 설치 */
+export const canPlace = (_zone: number, cell: Cell): boolean => isCell(cell) && !isOasis(cell) && zoneOf(cell) === -1;
 
 /** 8팀에 출발 구역을 중복 없이 무작위 배정. 결과[t] = 구역 id */
 export const drawZones = (rng: Rng): number[] => shuffle(rng, [...Array(TEAMS).keys()]);

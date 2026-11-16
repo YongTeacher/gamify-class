@@ -47,7 +47,7 @@ test('이동: 8방향 1칸만, 보드 밖·제자리·두 칸 거부', () => {
   assert.equal(p.landings[0].moved, false, '잘못된 이동은 제자리');
 });
 
-test('설치: 팀당 13개(일반 10·귀환·속박·혼란), 오아시스·자기 구역 금지, 한 칸 1개, 타 팀과 중첩 허용', () => {
+test('설치: 팀당 13개(일반 10·귀환·속박·혼란), 오아시스·모든 출발 구역 금지, 한 칸 1개, 타 팀과 중첩 허용', () => {
   for (let seed = 1; seed <= 30; seed++) {
     const rng = makeRng(seed), zones = drawZones(rng);
     assert.deepEqual([...zones].sort(), ZONES8, '구역 중복 없이 배정');
@@ -57,7 +57,8 @@ test('설치: 팀당 13개(일반 10·귀환·속박·혼란), 오아시스·자
   }
   assert.ok(!canPlace(0, OASIS[0]));
   assert.ok(!canPlace(0, ZONES[0][0]));
-  assert.ok(canPlace(0, ZONES[1][0]), '다른 팀 구역에는 설치 가능');
+  for (const zone of ZONES) for (const cell of zone) assert.ok(!canPlace(0, cell), '모든 출발 구역에 설치 불가');
+  assert.ok(!autoPlace(makeRng(4), ZONES8).some((trap) => zoneOf(trap.cell) !== -1), '자동 설치도 모든 출발 구역 제외');
   const traps = autoPlace(makeRng(3), ZONES8);
   const mine = traps.filter((t) => t.owner === 0);
   const other = traps.find((t) => t.owner === 1)!;
@@ -66,6 +67,7 @@ test('설치: 팀당 13개(일반 10·귀환·속박·혼란), 오아시스·자
   assert.equal(moveTrap(traps, ZONES8, 0, mine[0].id, mine[1].cell), 'OCCUPIED_BY_YOU');
   assert.equal(moveTrap(traps, ZONES8, 0, other.id, cellOf(5, 5)), 'NOT_YOURS');
   assert.equal(moveTrap(traps, ZONES8, 0, mine[0].id, OASIS[0]), 'BAD_CELL');
+  assert.equal(moveTrap(traps, ZONES8, 0, mine[0].id, ZONES[1][0]), 'BAD_CELL');
   const swapped = swapTraps(traps, 0, mine[0].id, mine[1].id) as Trap[];
   assert.equal(swapped.find((t) => t.id === mine[0].id)!.cell, mine[1].cell);
 });

@@ -169,7 +169,6 @@ function tickClock() {
 }
 
 const myPos = (v: TeamView) => v.teams[v.me.team].pos;
-const myZone = (v: TeamView) => v.teams[v.me.team].zone;
 const ownCells = (v: TeamView) => new Set(v.me.traps.filter((t) => t.active).map((t) => t.cell));
 const canAct = (v: TeamView) => v.me.controller && !v.paused && !ui.busy;
 const canMove = (v: TeamView) => v.phase === 'RUNNING' && v.step === 'MOVE_OPEN' && canAct(v) && !v.teams[v.me.team].status.moved && v.teams[v.me.team].status.boundLeft === 0;
@@ -178,8 +177,8 @@ const reconOpen = (v: TeamView) => v.me.reconAvailable && v.me.controller && !v.
 const coord = (cell: number) => `세로 ${rowOf(cell) + 1}·가로 ${colOf(cell) + 1}`;
 
 function allowedTrapCells(v: TeamView): Set<number> {
-  const own = ownCells(v), zone = myZone(v);
-  return new Set([...Array(256).keys()].filter((c) => !OASIS.includes(c) && zoneOf(c) !== zone && !own.has(c)));
+  const own = ownCells(v);
+  return new Set([...Array(256).keys()].filter((c) => !OASIS.includes(c) && zoneOf(c) === -1 && !own.has(c)));
 }
 
 function zoomWindow(v: TeamView): BoardModel['view'] | undefined {
@@ -215,7 +214,7 @@ async function onBoardClick(e: MouseEvent) {
     const hit = v.me.traps.find((t) => t.cell === cell);
     if (hit) await pickTrap(hit.id);
     else if (ui.selectedTrap !== null && model.allowedCells?.has(cell)) { const id = ui.selectedTrap; ui.selectedTrap = null; await send({ type: 'trapMove', trapId: id, to: cell }); }
-    else if (ui.selectedTrap !== null) toast('그 칸에는 옮길 수 없어요 (오아시스·우리 출발 구역·우리 덫이 있는 칸).');
+    else if (ui.selectedTrap !== null) toast('그 칸에는 옮길 수 없어요 (오아시스·모든 출발 구역·우리 덫이 있는 칸).');
     render(); return;
   }
   if (canMove(v) && model.candidates?.includes(cell)) { ui.pick = cell; render(); }
@@ -309,7 +308,7 @@ function panel(v: TeamView): string {
     if (me.status.setupConfirmed) return `<div class="card"><h2>✅ 설치 확정!</h2><p class="muted" style="margin:0">다른 팀이 끝나기를 기다리는 중이에요.</p></div>`;
     const count = (t: string) => v.me.traps.filter((x) => x.type === t).length;
     return `<div class="card"><h2>🪤 덫 13개가 자동으로 놓였어요</h2>
-      <p class="muted" style="margin:0 0 10px">덫을 고르고(보드나 아래 목록) → 옮길 칸을 누르면 이동해요. 덫 두 개를 차례로 고르면 자리를 바꿔요. 칸이 작으면 🔍 확대를 쓰세요.<br>오아시스·우리 출발 구역에는 놓을 수 없고, 우리 덫도 우리에게 발동해요!</p>
+      <p class="muted" style="margin:0 0 10px">덫을 고르고(보드나 아래 목록) → 옮길 칸을 누르면 이동해요. 덫 두 개를 차례로 고르면 자리를 바꿔요. 칸이 작으면 🔍 확대를 쓰세요.<br>오아시스·모든 팀의 출발 구역에는 놓을 수 없고, 우리 덫도 우리에게 발동해요!</p>
       <div class="legend">${(['normal', 'return', 'bind', 'confuse'] as const).map((t) => `<span>${TRAP_ICON[t]} ${TRAP_NAME[t]} ${count(t)}개</span>`).join('')}</div></div>
       ${v.me.controller ? `<div class="trap-list" role="group" aria-label="우리 덫 목록">${v.me.traps.map((t) => `<button data-trap="${t.id}" aria-pressed="${ui.selectedTrap === t.id}" ${disabledUnlessActive(v)}>${TRAP_ICON[t.type]} ${coord(t.cell)}</button>`).join('')}</div>
       ${ui.selectedTrap !== null ? cellPicker('trapTo', '고른 덫을 옮길 칸 (키보드로 고르기)', 16, null, v) : ''}
@@ -380,7 +379,7 @@ function bindPanel(v: TeamView) {
   on('trapToGo', async () => {
     if (!view || !setupOpen(view) || ui.selectedTrap === null) return;
     const to = picked('trapTo');
-    if (!allowedTrapCells(view).has(to)) return toast('그 칸에는 옮길 수 없어요 (오아시스·우리 출발 구역·우리 덫이 있는 칸).');
+    if (!allowedTrapCells(view).has(to)) return toast('그 칸에는 옮길 수 없어요 (오아시스·모든 출발 구역·우리 덫이 있는 칸).');
     const id = ui.selectedTrap; ui.selectedTrap = null;
     await send({ type: 'trapMove', trapId: id, to }); render();
   });

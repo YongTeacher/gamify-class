@@ -7,7 +7,7 @@
  */
 import type { PublicEvent, TvView } from '../../game/views.ts';
 import { draw, TEAM_COLORS, type BoardModel } from '../shared/board.ts';
-import { Countdown, live, mmss } from '../shared/net.ts';
+import { command, Countdown, errText, live, mmss } from '../shared/net.ts';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
@@ -30,6 +30,73 @@ let clock: Countdown | null = null;
 let lastEventsKey = '';
 let idleText = '';
 let stopAll: () => void = () => {};
+let controlBusy = false;
+let noticeTimer: number | undefined;
+
+// 교사 화면에서 만든 판을 같은 브라우저의 TV 탭으로 열었을 때만 조작한다.
+// TV 열쇠만으로는 서버의 교사 명령을 실행할 수 없다.
+function hostKey(code: string): string | null {
+  try {
+    const games: unknown = JSON.parse(localStorage.getItem('animal-trap-teacher') ?? '[]');
+    if (!Array.isArray(games)) return null;
+    const game = games.find((item) => item && item.code === code);
+    return game && typeof game.hostKey === 'string' && /^[A-Z2-9]{20,40}$/.test(game.hostKey) ? game.hostKey : null;
+  } catch { return null; }
+}
+
+function notice(message: string) {
+  const box = document.getElementById('controlNotice'); if (!box) return;
+  box.textContent = message; box.hidden = false;
+  clearTimeout(noticeTimer);
+  noticeTimer = window.setTimeout(() => { box.hidden = true; }, 4500);
+}
+
+async function teacherCommand(cmd: Record<string, unknown>) {
+  if (controlBusy || !view) return;
+  const key = hostKey(view.code);
+  if (!key) return notice('교사 화면에서 이 판을 다시 열어 주세요.');
+  controlBusy = true; renderControls(view);
+  const result = await command(`/api/game/${view.code}/teacher`, { 'X-Host-Key': key }, { cmd });
+  controlBusy = false;
+  if (view) renderControls(view);
+  if (!result.ok) notice(errText(result.error));
+}
+
+function renderControls(v: TvView) {
+  const root = document.getElementById('teacherControls');
+  if (!root) return;
+  if (!hostKey(v.code)) { root.hidden = true; return; }
+  root.hidden = false;
+  const button = (label: string, cmd: Record<string, unknown>, danger = false) => ({ label, cmd, danger });
+  const actions: ReturnType<typeof button>[] = [];
+  if (v.phase === 'LOBBY') actions.push(button('🎲 출발 구역 추첨', { type: 'draw' }));
+  if (v.phase === 'DRAWN') actions.push(button('🪤 덫 설치 시작', { type: 'startSetup' }));
+  if (v.phase === 'TRAP_SETUP') actions.push(button('⏭ 덫 설치 마감', { type: 'closePhase', target: { phase: 'TRAP_SETUP' } }));
+  if (v.phase === 'READY') actions.push(button('🚀 게임 시작', { type: 'startGame' }));
+  if (v.phase === 'RUNNING' && v.step === 'MOVE_OPEN') actions.push(button('⏭ 이동 마감', { type: 'closePhase', target: { phase: 'RUNNING', step: 'MOVE_OPEN', round: v.round } }));
+  if (v.phase === 'RUNNING' && v.step === 'QUESTION_OPEN') actions.push(button('⏭ 문제 마감', { type: 'closePhase', target: { phase: 'RUNNING', step: 'QUESTION_OPEN', round: v.round } }));
+  if (v.phase === 'RUNNING' && v.step === 'ROUND_SUMMARY') actions.push(button('▶ 다음 라운드', { type: 'next', round: v.round }));
+  if (v.phase === 'TRAP_SETUP' || v.phase === 'RUNNING') actions.push(v.paused ? button('▶ 재개', { type: 'resume' }) : button('⏸ 일시정지', { type: 'pause' }));
+  if (['DRAWN', 'TRAP_SETUP', 'READY', 'RUNNING'].includes(v.phase)) actions.push(button('■ 게임 종료', { type: 'finish' }, true));
+  if (v.phase === 'FINISHED') actions.push(button('📖 문제 복습', { type: 'review' }));
+  if (v.phase === 'FINISHED' || v.phase === 'REVIEW') {
+    actions.push(button(v.trapMap ? '🗺 덫 지도' : '🗺 덫 지도 공개', { type: 'revealTraps' }));
+    actions.push(button('🏆 순위 보기', { type: 'showRanking' }));
+  }
+  root.innerHTML = `<div class="control-title"><b>교사 진행</b><span>${v.phase === 'TRAP_SETUP' ? `설치 확정 ${v.teams.filter((team) => team.status.setupConfirmed).length}/8` : '이 브라우저에서만 조작'}</span></div><div class="control-actions"></div><p id="controlNotice" class="control-notice" role="status" hidden></p>`;
+  const list = root.querySelector('.control-actions')!;
+  for (const action of actions) {
+    const el = document.createElement('button');
+    el.textContent = action.label;
+    el.className = action.danger ? 'danger' : '';
+    el.disabled = controlBusy || (v.paused && !['resume', 'finish'].includes(String(action.cmd.type)));
+    el.onclick = () => {
+      if (action.danger && !confirm('게임을 지금 끝낼까요? 진행 중인 라운드는 취소됩니다.')) return;
+      void teacherCommand(action.cmd);
+    };
+    list.append(el);
+  }
+}
 
 function waitScreen(msg: string) {
   app.style.display = 'block';
@@ -59,6 +126,7 @@ function shell() {
       <div class="title"><h1 id="title"></h1><span class="code" id="code"></span></div>
       <div class="clocks"><div class="card"><div class="lbl">남은 게임 시간</div><b id="mainClock">--:--</b></div><div class="card step" id="stepBox"><div class="lbl" id="stepLabel"></div><b id="phaseClock"></b></div></div>
       <div style="display:grid;gap:1.2vh;min-height:0;grid-template-rows:auto 1fr"><ol class="board-list" id="scores"></ol><ul class="feed" id="feed"></ul></div>
+      <section class="teacher-controls" id="teacherControls" aria-label="교사 진행 도구" hidden></section>
       <div class="tools" id="tools"></div>
     </aside>`;
   renderTools();
@@ -109,6 +177,7 @@ function render() {
     $('#feed').innerHTML = v.phase === 'RUNNING' && v.step === 'ROUND_SUMMARY' ? v.events.map((e) => eventText(v, e)).filter(Boolean).slice(0, 6).join('') : '';
   }
   $('#overlay').innerHTML = overlay(v);
+  renderControls(v);
   tickClock();
 }
 

@@ -24,7 +24,7 @@ label.field { display: grid; gap: 6px; font-weight: 700; }
 .chip { padding: 4px 10px; border-radius: 999px; font-size: .85rem; font-weight: 700; background: #fff; box-shadow: var(--shadow); }
 .chip.bad { background: #fde3e3; color: var(--danger); }
 .board-wrap { position: relative; }
-canvas.board { width: 100%; aspect-ratio: 1; display: block; border-radius: 14px; box-shadow: var(--shadow); touch-action: manipulation; background: #9ccf7c; }
+canvas.board { width: 100%; aspect-ratio: 1; display: block; outline: 4px solid #294735; border-radius: 14px; box-shadow: 0 8px 22px #163a2840; touch-action: manipulation; background: #9ccf7c; }
 .board-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; font-size: .9rem; }
 .zoom { padding: 8px 12px; background: #fff; font-weight: 700; font-size: .9rem; box-shadow: var(--shadow); }
 .zoom[hidden] { display: none; }
