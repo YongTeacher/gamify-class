@@ -37,6 +37,71 @@ input,select{width:100%;padding:14px;font-size:22px;border-radius:8px;border:2px
 .warn{background:#3A2E12;border-left:6px solid var(--wait);padding:14px;border-radius:8px;margin-top:14px;font-size:20px;white-space:pre-line}
 .stop{background:#3A1A1A;border-left:6px solid var(--goal);padding:14px;border-radius:8px;margin-top:14px;font-size:20px;white-space:pre-line}
 
+/* S1: 경주 시작 로비. 진행 화면의 TV 크기·배치에는 영향을 주지 않는다. */
+#s1{--slot-1:#F2B441;--slot-2:#4FC3F7;--slot-3:#8BC34A;--slot-4:#EF5350;
+    --slot-5:#BA68C8;--slot-6:#FF8A65;--slot-7:#4DB6AC;--slot-8:#DCE775;
+    max-width:1180px;margin:0 auto;font-size:18px}
+#s1 .lobby-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:5px 0 14px}
+#s1 .lobby-top h1{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0;font-size:30px}
+#s1 #ver-badge{padding:4px 9px;border-radius:999px;background:#223b4b;color:#acd5d9;font-size:12px;font-weight:700}
+#s1 .lobby-top a{padding:9px 14px;border:1px solid #4a6a78;border-radius:999px;color:#dcecf1;font-size:15px;text-decoration:none;font-weight:800}
+#s1 .derby-hero{position:relative;min-width:0;min-height:280px;display:grid;grid-template-columns:minmax(0,1fr) 390px;align-items:center;gap:20px;overflow:hidden;padding:32px clamp(24px,4vw,46px);border:3px solid #406179;border-radius:24px;background:radial-gradient(circle at 80% 0,#355d74 0,transparent 43%),linear-gradient(125deg,#172c3c,#213f51 65%,#294a58);box-shadow:0 8px 0 #0b1c28,0 22px 34px #0006}
+#s1 .derby-hero::before{content:'';position:absolute;inset:0;opacity:.17;pointer-events:none;background:radial-gradient(circle at 8% 28%,#fff 0 2px,transparent 3px),radial-gradient(circle at 42% 81%,#fff 0 2px,transparent 3px);background-size:170px 150px,230px 190px}
+#s1 .hero-copy{position:relative;z-index:1}
+#s1 .hero-kicker{display:inline-block;padding:6px 10px;border:1px solid #c8dbaa88;border-radius:999px;color:#e0f6b4;font-size:12px;font-weight:900;letter-spacing:.12em}
+#s1 .hero-copy h2{margin:14px 0 10px;font-size:clamp(32px,4vw,50px);line-height:1.15;letter-spacing:-.045em;text-shadow:0 3px 0 #0b1c28}
+#s1 .hero-copy h2 em{color:#ffd66d;font-style:normal}
+#s1 .hero-copy p{color:#c4d8e0;font-size:18px;line-height:1.5}
+#s1 .hero-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:22px}
+#s1 .hero-actions button{padding:11px 16px;border:1px solid #c3d9d775;background:#112b3c;color:#fff;font-size:16px;font-weight:800}
+#s1 .hero-actions #tab-new{background:var(--gold);border-color:#f6d477;color:#1b2734}
+#s1 .hero-actions button:hover{filter:brightness(1.12)}
+#s1 .hero-track{position:relative;width:365px;max-width:100%;justify-self:end;padding:22px 35px 22px 18px;border:8px solid #caa55e;border-radius:18px;transform:rotate(-4deg);background:repeating-linear-gradient(90deg,#ffffff0b 0 1px,transparent 1px 36px),linear-gradient(130deg,#725838,#513c2f);box-shadow:0 10px 0 #1c252b,0 18px 25px #0008,inset 0 0 0 2px #e3c789}
+#s1 .hero-lane{position:relative;height:53px;display:flex;align-items:center;border-bottom:3px dashed #f8db9d88}
+#s1 .hero-lane:last-of-type{border-bottom:0}
+#s1 .hero-lane span{position:relative;z-index:1;display:grid;place-items:center;width:47px;height:42px;border:2px solid #ffe8ac;border-radius:12px;background:#243a47;font-size:26px;filter:drop-shadow(0 4px 1px #0008)}
+#s1 .hero-lane:nth-child(2) span{margin-left:70px}#s1 .hero-lane:nth-child(3) span{margin-left:118px}
+#s1 .hero-lane i{flex:1;height:2px;margin-left:12px;background:repeating-linear-gradient(90deg,#f0cb8d 0 8px,transparent 8px 15px)}
+#s1 .hero-track strong{position:absolute;right:10px;top:0;bottom:0;display:grid;place-items:center;width:26px;border-left:5px solid #f6e2a7;background:repeating-conic-gradient(#fff 0 25%,#233947 0 50%) 50%/14px 14px;color:transparent}
+#s1 .setup-card{position:relative;min-width:0;margin-top:16px;padding:28px;border:2px solid #405b6b;background:linear-gradient(155deg,#202f3d,#1a2835);box-shadow:0 5px 0 #101c26,0 12px 28px #0004}
+#s1 .setup-card::before{content:'';position:absolute;top:0;left:28px;right:28px;height:5px;border-radius:0 0 8px 8px;background:linear-gradient(90deg,var(--gold),var(--run),var(--ok))}
+#s1 .setup-heading{padding-bottom:16px;border-bottom:2px dashed #4b6271}
+#s1 .setup-heading>span{color:var(--run);font-size:13px;font-weight:900;letter-spacing:.12em}
+#s1 .setup-heading h2{margin:6px 0 4px;font-size:32px}
+#s1 .setup-heading p{color:#b3c5d0;font-size:17px}
+#s1 .setup-basics{display:grid;grid-template-columns:minmax(0,2fr) minmax(160px,1fr);gap:16px;margin:18px 0}
+#s1 .setup-basics label{margin:0 0 8px;color:#d7e3eb;font-size:18px;font-weight:800}
+#s1 input,#s1 select{min-width:0;font-size:18px;border-color:#526a79;background:#101d28}
+#s1 input:focus,#s1 select:focus{outline:3px solid #55b9dd;outline-offset:2px}
+#s1 .team-box{min-width:0;margin:0 0 18px;padding:16px;border:2px solid #496378;border-radius:14px;background:#182937}
+#s1 .team-box legend{padding:0 8px;font-weight:900;font-size:20px;color:#f6e7b6}
+#s1 .team-box legend small{margin-left:8px;color:#9cb3bf;font-size:13px;font-weight:600}
+#s1 .names{grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px}
+#s1 .team-slot{display:flex;align-items:center;gap:11px;min-width:0;margin:0;padding:10px;border:2px solid var(--slot-color);border-radius:13px;background:#233545;box-shadow:0 4px 0 #0b1822}
+#s1 .team-avatar{flex:0 0 44px;width:44px;height:44px;display:grid;place-items:center;border-radius:11px;background:var(--slot-color);font-size:25px}
+#s1 .team-fields{display:grid;gap:4px;min-width:0;flex:1}
+#s1 .team-number{color:#a9c0c9;font-size:11px;font-weight:900;letter-spacing:.1em}
+#s1 .team-slot input{width:100%;min-width:0;padding:8px 9px;border:1px solid #526a79;border-radius:7px;font-size:17px;font-weight:700}
+#s1 .team-slot:focus-within{box-shadow:0 0 0 2px var(--slot-color)}
+#s1 .advanced{min-width:0;border:2px solid #496378;border-radius:14px;background:#14232f}
+#s1 .advanced summary,#s1 .resume-card summary{display:flex;align-items:center;gap:12px;cursor:pointer;list-style:none;padding:16px 18px;font-size:20px;font-weight:900}
+#s1 .advanced summary::-webkit-details-marker,#s1 .resume-card summary::-webkit-details-marker{display:none}
+#s1 .advanced summary small,#s1 .resume-card summary small{color:#a9bdc9;font-size:15px;font-weight:600}
+#s1 .advanced summary::after,#s1 .resume-card summary::after{content:'펼치기 ＋';margin-left:auto;color:var(--run);font-size:15px;white-space:nowrap}
+#s1 .advanced[open] summary::after,#s1 .resume-card[open] summary::after{content:'접기 －'}
+#s1 .advanced-body{padding:0 18px 18px}
+#s1 .advanced-body .startcard{margin:18px 0}
+#s1 .advanced-body .admin-row{margin:12px 0 4px}
+#s1 .setup-card #btn-create{width:100%;margin-top:18px;padding:18px;border:2px solid #ffd985;border-radius:13px;background:linear-gradient(#ffe090,#efaf42);box-shadow:0 5px 0 #8a5f24;color:#1b2734;font-size:23px;font-weight:900}
+#s1 .setup-card #btn-create:hover{filter:brightness(1.06)}
+#s1 .resume-card{min-width:0;padding:0;border:2px solid #405b6b;background:#1b2b38;box-shadow:0 4px 0 #0b1c28}
+#s1 .resume-body{padding:0 20px 20px}
+#s1 .recent-scroll{max-width:100%;overflow-x:auto}
+#s1 .recent-scroll table{min-width:740px}
+#s1 .adminlink{margin-top:28px}
+@media(max-width:780px){#s1 .derby-hero{grid-template-columns:minmax(0,1fr);padding:25px}#s1 .hero-track{justify-self:center;margin-top:14px}#s1 .setup-basics{grid-template-columns:1fr}}
+@media(max-width:500px){#s1 .lobby-top h1{font-size:25px}#s1 .hero-copy h2{font-size:32px}#s1 .hero-track{width:min(100%,260px);padding:15px 28px 15px 10px;transform:rotate(-2deg)}#s1 .hero-lane{height:44px}#s1 .hero-lane:nth-child(2) span{margin-left:35px}#s1 .hero-lane:nth-child(3) span{margin-left:65px}#s1 .setup-card{padding:18px}#s1 .team-box legend small{display:block;margin:3px 0 0}#s1 .advanced summary small,#s1 .resume-card summary small{display:none}#s1 .advanced-body .startcard{flex-wrap:wrap}#s1 .sc-go{width:100%}}
+
 /* 배포 안내 */
 .code{font-size:96px;font-weight:900;color:var(--gold);letter-spacing:10px;text-align:center;margin:10px 0}
 .url{font-size:32px;font-weight:700;word-break:break-all;color:var(--run);line-height:1.35}

@@ -143,6 +143,7 @@ function createMsg(text: string): void {
   const box = $('create-msg');
   box.textContent = text;
   box.classList.toggle('hidden', !text);
+  if (text) ($('advanced') as HTMLDetailsElement).open = true;
 }
 
 // ────────────────────────────────────────────────────────────
@@ -150,16 +151,16 @@ function createMsg(text: string): void {
 // ────────────────────────────────────────────────────────────
 
 function pane(k: 'new' | 'resume'): void {
-  $('tab-new').className = k === 'new' ? 'on' : '';
-  $('tab-resume').className = k === 'resume' ? 'on' : '';
-  $('pane-new').classList.toggle('hidden', k !== 'new');
-  $('pane-resume').classList.toggle('hidden', k !== 'resume');
+  if (k === 'resume') ($('pane-resume') as HTMLDetailsElement).open = true;
+  $('pane-' + k).scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function drawNames(): void {
   const n = Number(($('cnt') as HTMLSelectElement).value);
+  const old = [...$('names').querySelectorAll<HTMLInputElement>('input')].map((input) => input.value);
+  const animals = ['🐆', '🐅', '🦓', '🐎', '🦒', '🦘', '🐇', '🐢'];
   let h = '';
-  for (let i = 1; i <= n; i++) h += `<input id="tn${i}" placeholder="${i}모둠">`;
+  for (let i = 1; i <= n; i++) h += `<label class="team-slot" style="--slot-color:var(--slot-${i})"><span class="team-avatar" aria-hidden="true">${animals[i - 1]}</span><span class="team-fields"><span class="team-number">PLAYER ${String(i).padStart(2, '0')}</span><input id="tn${i}" aria-label="${i}모둠 이름" placeholder="${i}모둠" value="${esc(old[i - 1] ?? '')}"></span></label>`;
   $('names').innerHTML = h;
 }
 
@@ -183,6 +184,7 @@ function loadUnits(): void {
       sel.innerHTML = '<option value="">— 문제가 없습니다 —</option>';
       sel.disabled = true;
       setupBox.classList.remove('hidden');
+      ($('advanced') as HTMLDetailsElement).open = true;
     } else {
       sel.disabled = false;
       setupBox.classList.add('hidden');
@@ -193,8 +195,9 @@ function loadUnits(): void {
       }).join('');
     }
 
+    const currentCount = Number(($('cnt') as HTMLSelectElement).value) || 6;
     let c = '';
-    for (let i = 2; i <= 8; i++) c += `<option${i === 6 ? ' selected' : ''}>${i}</option>`;
+    for (let i = 2; i <= 8; i++) c += `<option${i === currentCount ? ' selected' : ''}>${i}</option>`;
     ($('cnt') as HTMLSelectElement).innerHTML = c;
     drawNames();
 
@@ -236,6 +239,7 @@ function checkSheets(): void {
     if (d.blocking.length) h += `<div class="stop">⛔ 시작할 수 없어요\n${esc(d.blocking.join('\n'))}</div>`;
     if (d.warnings.length) h += `<div class="warn">⚠️ ${esc(d.warnings.join('\n'))}</div>`;
     $('check').innerHTML = h;
+    if (d.blocking.length) ($('advanced') as HTMLDetailsElement).open = true;
   }).catch(() => { /* 미리보기가 없어도 판 만들기는 서버가 다시 검사한다 */ });
 }
 
@@ -1512,6 +1516,9 @@ function wire(): void {
 
 function start(): void {
   wire();
+  const count = $('cnt') as HTMLSelectElement;
+  count.innerHTML = Array.from({ length: 7 }, (_, i) => `<option${i === 4 ? ' selected' : ''}>${i + 2}</option>`).join('');
+  drawNames();
   // 같은 탭에서 이미 넣은 관리자 비밀번호가 있으면 두 입력란에 미리 채운다.
   // /admin 과 같은 저장소를 쓰므로 (shared/pw.ts) 거기서 로그인했으면 여기도 채워진다
   setAdminPw(pwStore());
