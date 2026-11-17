@@ -39,6 +39,7 @@ type SetInfo = { name: string; total: number; counts: { 쉬움: number; 보통: 
 let setList: SetInfo[] = [];
 let chosenSet: string | null = null;
 let setLoadNo = 0;
+let resumeOpen = false;
 function endSession() { session?.close(); session = null; view = null; sessionNo++; busy = false; pendingFocus = null; $('#banners').innerHTML = ''; }
 
 function renderHome() {
@@ -49,7 +50,7 @@ function renderHome() {
   const games = savedGames();
   app.innerHTML = `
     <div class="top"><h1>🌴 애니멀 트랩 · 교사</h1><div class="row"><a class="small" href="/guide" style="text-decoration:none">사용 안내</a><a class="small" href="/admin" style="text-decoration:none">📚 문제은행</a><a class="small" href="/" target="_blank" rel="noopener">학생 화면 열기 ↗</a></div></div>
-    <div class="layout">
+    <div class="layout home-layout">
       <section class="card form" aria-labelledby="mk">
         <h2 id="mk">새 판 만들기</h2>
         <label>판 제목<input id="title" maxlength="60" placeholder="예: 2학년 3반 효소 단원"></label>
@@ -77,13 +78,16 @@ function renderHome() {
         </details>
         <button class="btn" id="create">판 만들기</button>
       </section>
-      <section class="card">
-        <h2>이어하기</h2>
-        ${games.length ? `<div class="games">${games.map((g) => `<div class="row" style="flex-wrap:nowrap"><button data-code="${g.code}" style="flex:1"><span>${esc(g.title || '제목 없음')}</span><span class="muted">${g.code}</span></button><button class="small" data-forget="${g.code}" aria-label="${g.code} 목록에서 지우기">지우기</button></div>`).join('')}</div>
-        <p class="muted" style="font-size:.85rem">공용 컴퓨터라면 수업 뒤 기록을 지우세요(교사 열쇠가 이 브라우저에 저장돼 있어요).</p><button class="small warn" id="forgetAll">이 브라우저의 판 기록 모두 지우기</button>` : '<p class="muted" style="margin:0">이 브라우저에서 만든 판이 여기에 남습니다.</p>'}
-      </section>
+      <details class="card resume" id="resume" ${resumeOpen ? 'open' : ''}>
+        <summary><span>이어하기</span><small>${games.length ? `이 브라우저에 저장된 판 ${games.length}개` : '저장된 판 없음'}</small></summary>
+        <div class="resume-body">
+          ${games.length ? `<div class="games">${games.map((g) => `<div class="row" style="flex-wrap:nowrap"><button data-code="${g.code}" style="flex:1"><span>${esc(g.title || '제목 없음')}</span><span class="muted">${g.code}</span></button><button class="small" data-forget="${g.code}" aria-label="${g.code} 목록에서 지우기">지우기</button></div>`).join('')}</div>
+          <p class="muted" style="font-size:.85rem">공용 컴퓨터라면 수업 뒤 기록을 지우세요(교사 열쇠가 이 브라우저에 저장돼 있어요).</p><button class="small warn" id="forgetAll">이 브라우저의 판 기록 모두 지우기</button>` : '<p class="muted" style="margin:0">이 브라우저에서 만든 판이 여기에 남습니다.</p>'}
+        </div>
+      </details>
     </div>`;
   $('#create').onclick = createGame;
+  $<HTMLDetailsElement>('#resume').ontoggle = (event) => { resumeOpen = (event.currentTarget as HTMLDetailsElement).open; };
   const renderTeamNames = () => {
     const count = Number($<HTMLSelectElement>('#teamCount').value);
     const old = [...document.querySelectorAll<HTMLInputElement>('#teamNames input')].map((input) => input.value);
