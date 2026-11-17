@@ -115,9 +115,9 @@ https://developers.kakao.com/tool/debugger — "카카오톡 URL 메타정보 �
 | --- | --- |
 | 생명 마블 | `bio-marble.pages.dev` |
 | 생명 마블 — 가이드 | `bio-marble.pages.dev/guide` |
-| 애니멀 더비 — 교사 (TV) | `wilde-derby.baesisi3648.workers.dev/teacher` |
-| 애니멀 더비 — 학생 (폰) | `wilde-derby.baesisi3648.workers.dev/` |
-| 애니멀 더비 — 가이드 | `wilde-derby.baesisi3648.workers.dev/guide` |
+| 애니멀 더비 — 교사 (TV) | `wilde-derby.bsy0708.workers.dev/teacher` |
+| 애니멀 더비 — 학생 (폰) | `wilde-derby.bsy0708.workers.dev/` |
+| 애니멀 더비 — 가이드 | `wilde-derby.bsy0708.workers.dev/guide` |
 
 애니멀 더비(예전 이름 와일드 더비)는 2026-09-05부터 Cloudflare Workers에서 돕니다. 주소가 고정이라 재배포해도 바뀌지 않습니다.
 예전 Apps Script 판은 이 페이지에서 더 링크하지 않습니다.
