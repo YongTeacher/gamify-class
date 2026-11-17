@@ -136,6 +136,28 @@ npx wrangler secret put ADMIN_PASSWORD          # 배포용
 echo 'ADMIN_PASSWORD="..."' >> .dev.vars         # 로컬용 (.gitignore 됨)
 ```
 
+### 선생님 계정 운영 배포 (2026-11-18)
+
+운영 주소는 `https://wilde-derby.bsy0708.workers.dev` 입니다. `wrangler.jsonc`의
+`account_id`와 `database_id`는 선생님 계정의 기존 Worker·D1을 가리킵니다.
+기존 형 계정 주소의 판 데이터는 이 운영 환경으로 옮기지 않았고, 문제은행 7세트
+174문항은 세트별 JSON으로 이전했습니다.
+
+코드를 고친 뒤에는 `apps/pjt-bio-betting/web`에서 다음 순서로 배포합니다.
+
+```bash
+npx wrangler whoami           # bsy0708@korea.kr 계정 확인
+npm ci
+npm test
+npm run build
+npx wrangler deploy
+```
+
+반복 배포에서는 D1을 새로 만들거나 `scripts/deploy.sh`를 실행하지 않습니다.
+관리자 비밀번호는 Worker secret에 이미 설정되어 있으므로 다시 입력할 필요가 없습니다.
+메인 Gamify Class의 링크를 고쳤다면 `YongTeacher/gamify-class`의 `main`에 푸시하면
+`gamifyclass.pages.dev`에 자동 반영됩니다.
+
 빌드 단계가 없습니다. Node 24 가 `.ts` 를 그대로 실행합니다.
 그래서 **생성자 매개변수 속성(`constructor(private deps)`)을 쓸 수 없습니다** —
 Node 의 strip-only 모드가 그 문법만은 못 지웁니다.

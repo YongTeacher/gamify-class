@@ -6,6 +6,7 @@
   //    DO 가 공짜로 주던 직렬화(= 예전의 LockService)가 사라진다 (MIGRATION §4-7).
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "wilde-derby",
+  "account_id": "c9b9535bd6fae6faf61e9ca70a7f230a",
   "main": "src/server/index.ts",
   "compatibility_date": "2026-09-05",
 
