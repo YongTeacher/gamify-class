@@ -29,7 +29,7 @@ export type PublicEvent =
   | { type: 'oasis'; team: number; rank: number; points: number };
 
 export interface PublicTeam {
-  team: number; animal: { code: string; name: string; emoji: string };
+  team: number; teamName: string; animalId: number | null; animal: { code: string; name: string; emoji: string };
   zone: number | null; pos: Cell | null; score: number; rank: number; oasisRank: number | null;
   status: { joined: boolean; setupConfirmed: boolean; moved: boolean; quiz: 'none' | 'pending' | 'done'; boundLeft: number; confusedLeft: number };
   /** 종료 후에만: 공개 사건(정오·상대 구역·오아시스)의 누적 요약 */
@@ -101,11 +101,15 @@ function publicView(s: RoomState, bank: readonly BankQuestion[], now: number): P
   const positions: (Cell | null)[] = c ? c.teams.map((t, i) => (s.pending ? s.pending.landings[i].to : t.pos)) : s.zones ? s.zones.map((z) => SPAWN_CELL[z]) : Array(count).fill(null);
   const scores = c ? c.teams.map((t) => t.score) : Array(count).fill(0);
   const ranks = rankTeams(scores);
-  const teams: PublicTeam[] = ANIMALS.slice(0, count).map((animal, team) => {
+  const teamNames = s.teamNames?.length === count ? s.teamNames : Array.from({ length: count }, (_, i) => `${i + 1}팀`);
+  const selectedAnimals = s.animalByTeam?.length === count ? s.animalByTeam : Array.from({ length: count }, (_, i) => i);
+  const teams: PublicTeam[] = Array.from({ length: count }, (_, team) => {
+    const animalId = selectedAnimals[team];
+    const animal = animalId === null || !ANIMALS[animalId] ? { code: '?', name: '선택 대기', emoji: '❔' } : ANIMALS[animalId];
     const t = c?.teams[team];
     const l = s.pending?.landings[team];
     return {
-      team, animal: { ...animal }, zone: s.zones ? s.zones[team] : null, pos: positions[team], score: scores[team], rank: ranks[team],
+      team, teamName: teamNames[team], animalId, animal: { ...animal }, zone: s.zones ? s.zones[team] : null, pos: positions[team], score: scores[team], rank: ranks[team],
       oasisRank: t?.oasisRank ?? null,
       status: {
         joined: s.creds.controlToken[team] !== null, // 공개 정보(TV 에 '입장 완료'로 보인다). 토큰 값은 싣지 않는다

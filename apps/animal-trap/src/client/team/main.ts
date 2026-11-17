@@ -49,45 +49,41 @@ function renderEntry(message = '') {
   const h = parseHash();
   let team = h.team;
   let available = ANIMALS.length;
+  let teamNames = Array.from({ length: available }, (_, i) => `${i + 1}팀`);
   let lookup = 0;
   app.innerHTML = `
     <section class="hero"><div class="logo" aria-hidden="true">🌴</div><h1>애니멀 트랩</h1><p class="muted">오아시스 쟁탈전 · 우리 팀 화면</p></section>
     <section class="card actions">
       ${message ? `<p role="alert" style="color:var(--danger);font-weight:700;margin:0">${esc(message)}</p>` : ''}
       <label class="field">판 코드<input id="code" inputmode="text" autocomplete="off" autocapitalize="characters" maxlength="6" value="${esc(h.code)}" placeholder="칠판의 6자리"></label>
-      <fieldset style="border:0;padding:0;margin:0"><legend style="font-weight:700;margin-bottom:6px">우리 팀 <span class="muted" id="teamHint"></span></legend><div class="teams" id="teams">
-        ${ANIMALS.map((a, i) => { const [e, n] = a.split(' '); return `<button type="button" data-team="${i}" aria-pressed="${team === i}" style="--c:${TEAM_COLORS[i]}"><span class="e" aria-hidden="true">${e}</span>${n}</button>`; }).join('')}
-      </div></fieldset>
+      <label class="field">우리 팀 <span class="muted" id="teamHint"></span><select id="team"><option value="">판 코드를 먼저 확인해 주세요</option></select></label>
       <label class="field">팀 PIN (4자리)<input id="pin" inputmode="numeric" autocomplete="off" maxlength="4" pattern="[0-9]{4}" placeholder="••••"></label>
       <button class="btn" id="go">입장하기</button>
     </section>`;
-  const teamButtons = $('#teams');
-  $('#teams').onclick = (e) => {
-    const b = (e.target as HTMLElement).closest('button[data-team]') as HTMLButtonElement | null; if (!b) return;
-    team = Number(b.dataset.team);
-    document.querySelectorAll('#teams button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-  };
+  const teamSelect = $<HTMLSelectElement>('#team');
+  teamSelect.onchange = () => { team = teamSelect.value === '' ? null : Number(teamSelect.value); };
   const updateAvailable = async () => {
     const code = $<HTMLInputElement>('#code').value.trim().toUpperCase();
     const current = ++lookup;
     if (!CODE_RE.test(code)) return;
-    const r = await call<{ teamCount: number }>(`/api/game/${code}/lobby`, {}, undefined, 'GET');
-    if (current !== lookup || document.getElementById('teams') !== teamButtons) return;
+    const r = await call<{ teamCount: number; teamNames: string[] }>(`/api/game/${code}/lobby`, {}, undefined, 'GET');
+    if (current !== lookup || document.getElementById('team') !== teamSelect) return;
     if (!r.ok || !Number.isInteger(r.data.teamCount) || r.data.teamCount < 4 || r.data.teamCount > 8) return;
     available = r.data.teamCount;
-    document.querySelectorAll<HTMLButtonElement>('#teams button[data-team]').forEach((button) => { button.hidden = Number(button.dataset.team) >= available; });
+    teamNames = Array.isArray(r.data.teamNames) && r.data.teamNames.length === available ? r.data.teamNames : Array.from({ length: available }, (_, i) => `${i + 1}팀`);
+    teamSelect.innerHTML = `<option value="">우리 팀을 선택하세요</option>${teamNames.map((name, i) => `<option value="${i}"${team === i ? ' selected' : ''}>${esc(name)}</option>`).join('')}`;
     $('#teamHint').textContent = `(${available}팀 참여)`;
     if (team !== null && team >= available) {
       team = null;
-      document.querySelectorAll('#teams button').forEach((button) => button.setAttribute('aria-pressed', 'false'));
+      teamSelect.value = '';
     }
   };
-  $<HTMLInputElement>('#code').oninput = () => { available = ANIMALS.length; $('#teamHint').textContent = ''; document.querySelectorAll<HTMLButtonElement>('#teams button[data-team]').forEach((button) => { button.hidden = false; }); void updateAvailable(); };
+  $<HTMLInputElement>('#code').oninput = () => { available = ANIMALS.length; $('#teamHint').textContent = ''; teamSelect.innerHTML = '<option value="">판 코드를 확인하는 중…</option>'; void updateAvailable(); };
   if (h.code) void updateAvailable();
   $('#go').onclick = async () => {
     const code = $<HTMLInputElement>('#code').value.trim().toUpperCase(), pin = $<HTMLInputElement>('#pin').value.trim();
     if (!CODE_RE.test(code)) return toast('판 코드 6자리를 확인해 주세요.');
-    if (team === null) return toast('우리 팀을 골라 주세요.');
+    if (team === null) return toast('우리 팀명을 골라 주세요.');
     if (team >= available) return toast('이 판에 참여하지 않는 팀입니다.');
     if (!/^\d{4}$/.test(pin)) return toast('PIN 4자리를 입력해 주세요.');
     const btn = $<HTMLButtonElement>('#go'); btn.disabled = true;
@@ -258,7 +254,7 @@ function render() {
   const me = v.teams[v.me.team];
   $('#banners').innerHTML = viewerBanner();
   $('#hud').innerHTML = `
-    <div class="me" style="--c:${TEAM_COLORS[v.me.team]}"><span class="e" aria-hidden="true">${me.animal.emoji}</span><span>${esc(me.animal.name)}팀</span></div>
+    <div class="me" style="--c:${TEAM_COLORS[v.me.team]}"><span class="e" aria-hidden="true">${me.animal.emoji}</span><span>${esc(me.teamName)}<small>${me.animalId === null ? '동물 선택 전' : esc(me.animal.name)}</small></span></div>
     <div class="score">${me.score}점 <span class="muted" style="font-size:.9rem">${v.phase === 'RUNNING' || v.phase === 'FINISHED' || v.phase === 'REVIEW' ? me.rank + '위' : ''}</span></div>
     <div class="clock"><span class="muted" style="font-size:.8rem">${v.round ? v.round + '라운드' : '게임 시간'}</span><b id="mainClock">${mmss(v.mainRemainingMs)}</b></div>`;
   const label = v.paused ? '⏸ 선생님이 잠시 멈췄어요' : v.phase === 'RUNNING' ? STEP_TEXT[v.step ?? ''] ?? '' : PHASE_TEXT[v.phase];
@@ -323,7 +319,16 @@ function cellPicker(id: string, label: string, max: number, preset: number | nul
 
 function panel(v: TeamView): string {
   const me = v.teams[v.me.team];
-  if (v.phase === 'LOBBY') return `<div class="card"><h2>입장 완료!</h2><p class="muted" style="margin:0">선생님이 출발 구역을 추첨하면 시작해요.</p></div>`;
+  if (v.phase === 'LOBBY') {
+    const taken = new Map(v.teams.filter((team) => team.animalId !== null && team.team !== v.me.team).map((team) => [team.animalId as number, team.teamName]));
+    return `<div class="card"><h2>${me.animalId === null ? '우리 팀 동물을 선착순으로 골라요' : `${me.animal.emoji} ${esc(me.animal.name)} 선택 완료!`}</h2>
+      <p class="muted" style="margin:0 0 12px">동물의 능력 차이는 없어요. 모든 팀이 고르면 선생님이 출발 자리를 무작위로 추첨해요.</p>
+      ${v.me.controller ? `<div class="animal-picker" role="group" aria-label="동물 선택">${ANIMALS.map((animal, i) => {
+        const owner = taken.get(i), selected = me.animalId === i;
+        return `<button data-animal="${i}" aria-pressed="${selected}" ${owner ? 'disabled' : ''}><span>${animal.split(' ')[0]}</span><b>${animal.split(' ')[1]}</b><small>${owner ? `${esc(owner)} 선택` : selected ? '우리 팀 선택' : '선택 가능'}</small></button>`;
+      }).join('')}</div>` : '<p class="muted">이 기기는 보기 전용이에요. 조작 기기에서 동물을 선택해 주세요.</p>'}
+      ${me.animalId === null ? '<p class="animal-wait">선택은 서버에 먼저 도착한 팀에게 확정됩니다.</p>' : '<p class="animal-wait ok">다른 팀의 선택을 기다리는 중이에요.</p>'}</div>`;
+  }
   if (v.phase === 'DRAWN') return `<div class="card"><h2>출발 구역이 정해졌어요</h2><p class="muted" style="margin:0">게임판에서 동그라미 친 우리 동물 자리를 확인하세요. 곧 덫 설치가 시작돼요.</p></div>`;
   if (v.phase === 'TRAP_SETUP') {
     if (me.status.setupConfirmed) return `<div class="card"><h2>✅ 설치 확정!</h2><p class="muted" style="margin:0">다른 팀이 끝나기를 기다리는 중이에요.</p></div>`;
@@ -367,7 +372,7 @@ function panel(v: TeamView): string {
     const winners = order.filter((t) => t.rank === 1), s = me.summary;
     return (ui.reconMode ? reconPanel(v) : '') + `<div class="card big-result"><span class="e" aria-hidden="true">${me.rank === 1 ? '🏆' : '🌿'}</span>${me.rank === 1 ? (winners.length > 1 ? '공동 우승!' : '우승!') : me.rank + '위'} · ${me.score}점
       ${s ? `<div class="stats" style="margin-top:12px"><div><b>${s.correct}</b>정답</div><div><b>${s.wrong}</b>오답</div><div><b>${s.zones}</b>상대 구역</div><div><b>${s.oasisRank ?? '–'}</b>오아시스 등수</div></div>` : ''}</div>
-      <div class="card"><h2>최종 순위</h2><ol class="rank">${order.map((t) => `<li class="${t.team === v.me.team ? 'mine' : ''}" style="--c:${TEAM_COLORS[t.team]}"><span>${t.rank}위</span><span aria-hidden="true">${t.animal.emoji}</span><span>${esc(t.animal.name)}${t.team === v.me.team ? ' (우리)' : ''}</span><span>${t.score}점</span></li>`).join('')}</ol></div>
+      <div class="card"><h2>최종 순위</h2><ol class="rank">${order.map((t) => `<li class="${t.team === v.me.team ? 'mine' : ''}" style="--c:${TEAM_COLORS[t.team]}"><span>${t.rank}위</span><span aria-hidden="true">${t.animal.emoji}</span><span>${esc(t.teamName)} · ${esc(t.animal.name)}${t.team === v.me.team ? ' (우리)' : ''}</span><span>${t.score}점</span></li>`).join('')}</ol></div>
       ${reconOpen(v) && !ui.reconMode ? `<button class="btn ghost" id="recon">🔭 남은 정찰권 쓰기</button>` : ''}
       ${v.trapMap ? '<div class="card"><h2>🗺 전체 덫 지도 공개</h2><p class="muted" style="margin:0">게임판에 모든 팀의 덫이 팀 색 점으로 표시됐어요(흐린 점은 없어진 덫).</p></div>' : ''}
       ${v.reviewQuestions.length ? `<div class="card"><h2>📖 복습 문제</h2>${v.reviewQuestions.map((q) => `<details class="review"><summary>${esc(q.text)}</summary><ol>${q.choices.map((c, i) => `<li style="${i + 1 === q.answer ? 'color:var(--ok);font-weight:800' : ''}">${esc(c)}${i + 1 === q.answer ? ' ✔ 정답' : ''}</li>`).join('')}</ol>${q.explanation ? `<p class="muted">${esc(q.explanation)}</p>` : ''}</details>`).join('')}</div>` : ''}`;
@@ -383,6 +388,12 @@ function reconPanel(v: TeamView) {
 
 function bindPanel(v: TeamView) {
   const on = (id: string, fn: () => void) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
+  document.querySelectorAll<HTMLButtonElement>('[data-animal]').forEach((button) => (button.onclick = async () => {
+    if (!view || view.phase !== 'LOBBY' || !canAct(view)) return;
+    const animal = Number(button.dataset.animal);
+    const result = await send({ type: 'claimAnimal', animal });
+    if (result) toast(`${ANIMALS[animal]} 선택 완료!`);
+  }));
   on('confirm', async () => {
     if (!confirm('설치를 확정할까요? 확정하면 더 옮길 수 없어요.')) return;
     if (!view || !setupOpen(view)) return toast('지금은 확정할 수 없어요.'); // 대화상자가 열린 사이 바뀌었을 수 있다

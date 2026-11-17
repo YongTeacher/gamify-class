@@ -97,6 +97,7 @@ export const ERROR_TEXT: Record<string, string> = {
   BAD_PIN: 'PIN이 맞지 않아요.', PIN_LOCKED: '여러 번 틀려서 잠겼어요. 30초 뒤에 다시 해 주세요.', BAD_TEAM: '팀을 다시 골라 주세요.',
   NOT_CONTROLLER: '이 기기는 보기 전용이에요. 조작은 팀의 첫 기기에서 해 주세요.', BAD_KEY: '열쇠가 맞지 않아요.',
   STALE: '이미 다음 단계로 넘어갔어요.', PAUSED: '선생님이 잠시 멈췄어요.', BAD_PHASE: '지금은 할 수 없어요.',
+  ANIMALS_NOT_READY: '모든 팀이 동물을 선택한 뒤에 자리를 추첨할 수 있어요.', ANIMAL_TAKEN: '방금 다른 팀이 먼저 선택한 동물이에요. 다른 동물을 골라 주세요.', BAD_ANIMAL: '동물을 다시 골라 주세요.',
   BAD_MOVE: '바로 옆 8칸 중에서만 고를 수 있어요.', ALREADY_MOVED: '이번 라운드 이동은 이미 정했어요.', BOUND: '속박 덫에 걸려 이번 라운드는 움직일 수 없어요.',
   ALREADY_ANSWERED: '이미 답을 냈어요.', NO_QUESTION: '풀 문제가 없어요.', BAD_CHOICE: '보기를 다시 골라 주세요.',
   NO_RECON: '정찰권이 없어요.', BAD_AREA: '정찰 구역은 보드 안 3×3이어야 해요.',

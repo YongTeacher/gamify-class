@@ -53,22 +53,28 @@ function renderHome() {
       <section class="card form" aria-labelledby="mk">
         <h2 id="mk">새 판 만들기</h2>
         <label>판 제목<input id="title" maxlength="60" placeholder="예: 2학년 3반 효소 단원"></label>
-        <div class="set-picker">
-          <strong>① 관리자 비밀번호 입력</strong>
-          <div class="set-load"><input id="admin" type="password" autocomplete="current-password" aria-label="관리자 비밀번호" placeholder="문제 세트를 보려면 입력"><button class="small" id="loadSets" type="button">세트 목록 불러오기</button></div>
-          <strong>② 사용할 문제 세트 선택</strong>
-          <select id="setChoice" aria-label="사용할 문제 세트" disabled><option value="">먼저 세트 목록을 불러오세요</option></select>
-          <p id="setInfo" class="set-info" role="status">세트 이름과 문항 수를 확인한 뒤 선택할 수 있어요.</p>
-          <a href="/admin" target="_blank" rel="noopener">문제은행에서 세트 관리 ↗</a>
-        </div>
-        <div class="grid2">
-          <label>팀 수<select id="teamCount">${[4, 5, 6, 7, 8].map((n) => `<option value="${n}"${n === 8 ? ' selected' : ''}>${n}팀</option>`).join('')}</select></label>
-          <label>게임 시간(분)<input id="durationMin" type="number" min="1" max="60" value="15"></label>
-          <label>이동 시간(초)<input id="moveSec" type="number" min="10" max="60" value="20"></label>
-          <label>문제 시간(초)<input id="quizSec" type="number" min="20" max="120" value="45"></label>
-          <label>덫 설치 시간(초)<input id="setupSec" type="number" min="60" max="300" value="120"></label>
-        </div>
-        <label style="display:flex;gap:8px;align-items:center;font-weight:600"><input id="autoNext" type="checkbox" style="width:auto"> 라운드 결과 5초 뒤 자동으로 다음 라운드</label>
+        <label>팀 수<select id="teamCount">${[4, 5, 6, 7, 8].map((n) => `<option value="${n}"${n === 8 ? ' selected' : ''}>${n}팀</option>`).join('')}</select></label>
+        <fieldset class="team-name-box"><legend>팀명</legend><div id="teamNames" class="team-name-grid"></div></fieldset>
+        <details class="advanced" id="advanced">
+          <summary><span>⚙️ 세부 설정</span><small>문제 세트와 진행 시간을 설정해요</small></summary>
+          <div class="advanced-body">
+            <div class="set-picker">
+              <strong>① 관리자 비밀번호 입력</strong>
+              <div class="set-load"><input id="admin" type="password" autocomplete="current-password" aria-label="관리자 비밀번호" placeholder="문제 세트를 보려면 입력"><button class="small" id="loadSets" type="button">세트 목록 불러오기</button></div>
+              <strong>② 사용할 문제 세트 선택</strong>
+              <select id="setChoice" aria-label="사용할 문제 세트" disabled><option value="">먼저 세트 목록을 불러오세요</option></select>
+              <p id="setInfo" class="set-info" role="status">세트 이름과 문항 수를 확인한 뒤 선택할 수 있어요.</p>
+              <a href="/admin" target="_blank" rel="noopener">문제은행에서 세트 관리 ↗</a>
+            </div>
+            <div class="grid2">
+              <label>게임 시간(분)<input id="durationMin" type="number" min="1" max="60" value="15"></label>
+              <label>이동 시간(초)<input id="moveSec" type="number" min="10" max="60" value="20"></label>
+              <label>문제 시간(초)<input id="quizSec" type="number" min="20" max="120" value="45"></label>
+              <label>덫 설치 시간(초)<input id="setupSec" type="number" min="60" max="300" value="120"></label>
+            </div>
+            <label style="display:flex;gap:8px;align-items:center;font-weight:600"><input id="autoNext" type="checkbox" style="width:auto"> 라운드 결과 5초 뒤 자동으로 다음 라운드</label>
+          </div>
+        </details>
         <button class="btn" id="create">판 만들기</button>
       </section>
       <section class="card">
@@ -78,6 +84,13 @@ function renderHome() {
       </section>
     </div>`;
   $('#create').onclick = createGame;
+  const renderTeamNames = () => {
+    const count = Number($<HTMLSelectElement>('#teamCount').value);
+    const old = [...document.querySelectorAll<HTMLInputElement>('#teamNames input')].map((input) => input.value);
+    $('#teamNames').innerHTML = Array.from({ length: count }, (_, i) => `<label><span>${i + 1}팀</span><input data-team-name="${i}" maxlength="20" value="${esc(old[i] || `${i + 1}팀`)}" aria-label="${i + 1}팀 팀명"></label>`).join('');
+  };
+  $<HTMLSelectElement>('#teamCount').onchange = renderTeamNames;
+  renderTeamNames();
   $('#loadSets').onclick = fillSetNames;
   $<HTMLInputElement>('#admin').onchange = () => { if ($<HTMLInputElement>('#admin').value) void fillSetNames(); };
   $<HTMLInputElement>('#admin').oninput = () => {
@@ -128,11 +141,16 @@ function showSetInfo() {
 
 async function createGame() {
   const num = (id: string) => Number(($('#' + id) as HTMLInputElement).value);
+  const teamNames = [...document.querySelectorAll<HTMLInputElement>('[data-team-name]')].map((input) => input.value.trim());
   const body = { title: ($('#title') as HTMLInputElement).value, setName: chosenSet ?? '',
-    teamCount: num('teamCount'), durationMin: num('durationMin'), moveSec: num('moveSec'), quizSec: num('quizSec'), setupSec: num('setupSec'), autoNext: ($('#autoNext') as HTMLInputElement).checked };
+    teamCount: num('teamCount'), teamNames, durationMin: num('durationMin'), moveSec: num('moveSec'), quizSec: num('quizSec'), setupSec: num('setupSec'), autoNext: ($('#autoNext') as HTMLInputElement).checked };
   const pw = ($('#admin') as HTMLInputElement).value;
-  if (!pw) return toast('관리자 비밀번호를 입력해 주세요.');
-  if (chosenSet === null) return toast('문제 세트 목록을 불러와 사용할 세트를 선택해 주세요.');
+  if (teamNames.length !== body.teamCount || teamNames.some((name) => !name)) return toast('모든 팀의 이름을 입력해 주세요.');
+  if (new Set(teamNames).size !== teamNames.length) return toast('팀명은 서로 다르게 입력해 주세요.');
+  if (!pw || chosenSet === null) {
+    $<HTMLDetailsElement>('#advanced').open = true;
+    return toast(!pw ? '세부 설정에서 관리자 비밀번호를 입력해 주세요.' : '세부 설정에서 사용할 문제 세트를 선택해 주세요.');
+  }
   const btn = $<HTMLButtonElement>('#create'); btn.disabled = true;
   const mine = sessionNo;
   const r = await call<{ code: string; hostKey: string; warnings: string[] }>('/api/game', { 'X-Admin-Password': pw }, body);
@@ -244,7 +262,7 @@ function render() {
 function focusKey(el: Element | null): string | null {
   if (!el || !(el instanceof HTMLElement) || !app.contains(el)) return null;
   if (el.id) return '#' + CSS.escape(el.id);
-  for (const a of ['data-release', 'data-unlock', 'data-reissue', 'data-reveal', 'data-show']) { const v = el.getAttribute(a); if (v !== null) return `[${a}="${CSS.escape(v)}"]`; }
+  for (const a of ['data-release', 'data-unlock', 'data-reissue', 'data-reset-animal', 'data-reveal', 'data-show']) { const v = el.getAttribute(a); if (v !== null) return `[${a}="${CSS.escape(v)}"]`; }
   return null;
 }
 
@@ -253,7 +271,10 @@ function controls(v: TeacherView, off: string): string {
   const pause = v.phase === 'RUNNING' || v.phase === 'TRAP_SETUP' ? (v.paused ? b('resume', '▶ 재개', 'btn', busy ? 'disabled' : '') : b('pause', '⏸ 일시정지', 'btn ghost', busy ? 'disabled' : '')) : '';
   const finish = ['DRAWN', 'TRAP_SETUP', 'READY', 'RUNNING'].includes(v.phase) ? b('finish', '■ 게임 종료', 'btn warn', busy ? 'disabled' : '') : '';
   let main = '';
-  if (v.phase === 'LOBBY') main = b('draw', '🎲 출발 구역 추첨', 'btn', off);
+  if (v.phase === 'LOBBY') {
+    const picked = v.teams.filter((team) => team.animalId !== null).length;
+    main = b('draw', `🎲 출발 자리 추첨 (${picked}/${v.teams.length})`, 'btn', off || picked < v.teams.length ? 'disabled' : '');
+  }
   if (v.phase === 'DRAWN') main = b('startSetup', '🪤 덫 설치 시작', 'btn', off);
   if (v.phase === 'TRAP_SETUP') main = b('closeSetup', '⏭ 설치 지금 마감', 'btn', off);
   if (v.phase === 'READY') main = b('startGame', '🚀 게임 시작', 'btn', off);
@@ -281,14 +302,15 @@ function roundSummary(v: TeacherView): string {
 
 function qrSection(v: TeacherView): string {
   return `<section class="card"><div class="row noprint" style="justify-content:space-between"><h2 style="margin:0">학생 입장 QR·PIN</h2><button class="small" id="print">🖨 인쇄</button></div>
-    <p class="muted noprint">팀마다 QR을 찍고 PIN 4자리를 넣으면 입장해요. 팀에서 처음 들어온 기기가 조작 담당이에요.</p>
-    <div class="qrs">${v.teams.map((t) => `<div class="qr" style="--c:${TEAM_COLORS[t.team]}"><div class="who">${t.animal.emoji} ${esc(t.animal.name)}팀</div>${qr(studentUrl(t.team))}<div class="muted" style="font-size:.8rem">판 ${v.code}</div><div class="pin">${esc(v.pins[t.team])}</div><div style="font-size:.85rem">${v.access[t.team].hasController ? '<span class="ok">✔ 입장함</span>' : '<span class="muted">입장 대기</span>'}</div></div>`).join('')}</div></section>`;
+    <p class="muted noprint">팀마다 QR을 찍고 PIN으로 입장한 뒤 원하는 동물을 선착순으로 선택해요. 모두 선택하면 출발 자리를 추첨할 수 있어요.</p>
+    <div class="qrs">${v.teams.map((t) => `<div class="qr" style="--c:${TEAM_COLORS[t.team]}"><div class="who">${esc(t.teamName)}</div>${qr(studentUrl(t.team))}<div class="muted" style="font-size:.8rem">판 ${v.code}</div><div class="pin">${esc(v.pins[t.team])}</div><div style="font-size:.85rem">${t.animalId !== null ? `<span class="ok">${t.animal.emoji} ${esc(t.animal.name)} 선택</span>` : v.access[t.team].hasController ? '<span class="ok">✔ 입장 · 동물 선택 전</span>' : '<span class="muted">입장 대기</span>'}</div></div>`).join('')}</div></section>`;
 }
 
 function teamTable(v: TeacherView): string {
   const status = (t: TeacherView['teams'][number]) => {
     if (v.phase === 'TRAP_SETUP') return t.status.setupConfirmed ? '<span class="ok">확정</span>' : '설치 중';
-    if (v.phase === 'LOBBY' || v.phase === 'DRAWN') return t.status.joined ? '<span class="ok">입장</span>' : '<span class="muted">대기</span>';
+    if (v.phase === 'LOBBY') return t.animalId !== null ? `<span class="ok">${t.animal.emoji} ${esc(t.animal.name)} 선택</span>` : t.status.joined ? '<span class="ok">입장 · 선택 중</span>' : '<span class="muted">대기</span>';
+    if (v.phase === 'DRAWN') return '<span class="ok">자리 추첨 완료</span>';
     if (v.phase !== 'RUNNING') return '';
     const s: string[] = [];
     if (v.step === 'MOVE_OPEN') s.push(t.status.boundLeft ? '⛓️ 속박' : t.status.moved ? '<span class="ok">이동함</span>' : '고르는 중');
@@ -299,13 +321,13 @@ function teamTable(v: TeacherView): string {
   const order = [...v.teams].sort((a, b) => a.rank - b.rank || a.team - b.team);
   const fin = order.some((t) => t.summary);
   return `<section class="card"><h2>${fin ? '최종 결과' : '팀 현황'}</h2><table class="teams"><thead><tr><th>순위</th><th>팀</th><th>${fin ? '정·오 · 구역 · 🌴' : '상태'}</th><th style="text-align:right">점수</th></tr></thead><tbody>
-    ${order.map((t) => `<tr><td>${t.rank}</td><td><span class="swatch" style="--c:${TEAM_COLORS[t.team]}" aria-hidden="true">${t.animal.emoji}</span> ${esc(t.animal.name)}${!fin && t.oasisRank ? ' 🌴' + t.oasisRank : ''}</td><td>${t.summary ? `${t.summary.correct}/${t.summary.wrong} · ${t.summary.zones} · ${t.summary.oasisRank ?? '–'}` : status(t)}</td><td class="num">${t.score}</td></tr>`).join('')}
+    ${order.map((t) => `<tr><td>${t.rank}</td><td><span class="swatch" style="--c:${TEAM_COLORS[t.team]}" aria-hidden="true">${t.animal.emoji}</span> ${esc(t.teamName)}${t.animalId !== null ? ` · ${esc(t.animal.name)}` : ''}${!fin && t.oasisRank ? ' 🌴' + t.oasisRank : ''}</td><td>${t.summary ? `${t.summary.correct}/${t.summary.wrong} · ${t.summary.zones} · ${t.summary.oasisRank ?? '–'}` : status(t)}${v.phase === 'LOBBY' && t.animalId !== null ? ` <button class="small" data-reset-animal="${t.team}">선택 초기화</button>` : ''}</td><td class="num">${t.score}</td></tr>`).join('')}
     </tbody></table></section>`;
 }
 
 function accessSection(v: TeacherView): string {
   return `<details class="card noprint" id="access" ${accessOpen ? 'open' : ''}><summary style="font-weight:800;cursor:pointer">🔧 팀 접속 관리 · TV 열쇠</summary>
-    <table class="teams" style="margin-top:10px"><tbody>${v.teams.map((t) => `<tr><td>${t.animal.emoji} PIN <b>${esc(v.pins[t.team])}</b></td>
+    <table class="teams" style="margin-top:10px"><tbody>${v.teams.map((t) => `<tr><td>${esc(t.teamName)} · PIN <b>${esc(v.pins[t.team])}</b></td>
       <td>${v.access[t.team].hasController ? '조작 기기 있음' : '<span class="muted">조작 기기 없음</span>'}${v.access[t.team].pinLocked ? ' · <span class="no">PIN 잠김</span>' : ''}</td>
       <td class="row" style="justify-content:flex-end">
         ${v.access[t.team].hasController ? `<button class="small" data-release="${t.team}">조작권 해제</button>` : ''}
@@ -350,9 +372,14 @@ function bind(v: TeacherView) {
   app.querySelectorAll<HTMLButtonElement>('[data-unlock]').forEach((b) => (b.onclick = () => void teacher({ type: 'unlockPin', team: Number(b.dataset.unlock) })));
   app.querySelectorAll<HTMLButtonElement>('[data-reissue]').forEach((b) => (b.onclick = async () => {
     const t = Number(b.dataset.reissue);
-    if (!confirm(`${v.teams[t].animal.name}팀 PIN을 새로 만들까요? 그 팀 기기는 모두 끊기고 새 PIN으로 다시 들어와야 해요.`)) return;
+    if (!confirm(`${v.teams[t].teamName} PIN을 새로 만들까요? 그 팀 기기는 모두 끊기고 새 PIN으로 다시 들어와야 해요.`)) return;
     const r = await teacher({ type: 'reissuePin', team: t }) as { pin?: string } | null;
-    if (r?.pin) toast(`${v.teams[t].animal.name}팀 새 PIN: ${r.pin}`);
+    if (r?.pin) toast(`${v.teams[t].teamName} 새 PIN: ${r.pin}`);
+  }));
+  app.querySelectorAll<HTMLButtonElement>('[data-reset-animal]').forEach((b) => (b.onclick = async () => {
+    const team = Number(b.dataset.resetAnimal);
+    if (!confirm(`${v.teams[team].teamName}의 동물 선택을 초기화할까요?`)) return;
+    if (await teacher({ type: 'resetAnimal', team })) toast('동물 선택을 초기화했어요. 해당 팀에서 다시 고를 수 있어요.');
   }));
   app.querySelectorAll<HTMLButtonElement>('[data-reveal]').forEach((b) => (b.onclick = () => void teacher({ type: 'revealQuestion', questionId: b.dataset.reveal })));
 }

@@ -69,7 +69,7 @@ function renderControls(v: TvView) {
   root.hidden = false;
   const button = (label: string, cmd: Record<string, unknown>, danger = false) => ({ label, cmd, danger });
   const actions: ReturnType<typeof button>[] = [];
-  if (v.phase === 'LOBBY') actions.push(button('🎲 출발 구역 추첨', { type: 'draw' }));
+  if (v.phase === 'LOBBY') actions.push(button(`🎲 출발 자리 추첨 (${v.teams.filter((team) => team.animalId !== null).length}/${v.teams.length})`, { type: 'draw' }));
   if (v.phase === 'DRAWN') actions.push(button('🪤 덫 설치 시작', { type: 'startSetup' }));
   if (v.phase === 'TRAP_SETUP') actions.push(button('⏭ 덫 설치 마감', { type: 'closePhase', target: { phase: 'TRAP_SETUP' } }));
   if (v.phase === 'READY') actions.push(button('🚀 게임 시작', { type: 'startGame' }));
@@ -89,7 +89,7 @@ function renderControls(v: TvView) {
     const el = document.createElement('button');
     el.textContent = action.label;
     el.className = action.danger ? 'danger' : '';
-    el.disabled = controlBusy || (v.paused && !['resume', 'finish'].includes(String(action.cmd.type)));
+    el.disabled = controlBusy || (action.cmd.type === 'draw' && v.teams.some((team) => team.animalId === null)) || (v.paused && !['resume', 'finish'].includes(String(action.cmd.type)));
     el.onclick = () => {
       if (action.danger && !confirm('게임을 지금 끝낼까요? 진행 중인 라운드는 취소됩니다.')) return;
       void teacherCommand(action.cmd);
@@ -136,7 +136,7 @@ const STEP: Record<string, string> = { MOVE_OPEN: '이동 고르는 중', QUESTI
 const PHASE: Record<string, string> = { LOBBY: '입장 대기', DRAWN: '출발 구역 추첨', TRAP_SETUP: '덫 설치 중', READY: '곧 시작', FINISHED: '게임 끝', REVIEW: '문제 복습' };
 
 function eventText(v: TvView, e: PublicEvent): string | null {
-  const a = (t: number) => `${v.teams[t].animal.emoji} ${esc(v.teams[t].animal.name)}`;
+  const a = (t: number) => `${v.teams[t].animal.emoji} ${esc(v.teams[t].teamName)}`;
   const p = (n: number) => `<span style="color:${n >= 0 ? 'var(--ok)' : 'var(--danger)'}">${n >= 0 ? '+' : '−'}${Math.abs(n)}</span>`;
   switch (e.type) {
     case 'quiz': return `<li><span>${a(e.team)} ${e.correct ? '🎉 정답! 덫 제거' : e.timeout ? '⏰ 시간 초과' : '😵 오답'}</span>${p(e.points)}</li>`;
@@ -156,11 +156,13 @@ function render() {
   $('#stepLabel').textContent = v.paused ? '⏸ 잠시 멈춤' : v.phase === 'RUNNING' ? `${v.round}라운드 · ${STEP[v.step ?? '']}` : PHASE[v.phase];
   // 단계 시계가 없을 때 초록 칸이 비지 않게 — 큰 글씨로 지금 상황
   const joined = v.teams.filter((t) => t.status.joined).length;
-  idleText = v.paused ? '⏸' : v.phase === 'LOBBY' ? `${joined}/${v.teams.length} 입장` : v.phase === 'DRAWN' ? '추첨 완료' : v.phase === 'READY' ? '곧 시작' : v.phase === 'RUNNING' && v.step === 'ROUND_SUMMARY' ? '결과 발표' : v.phase === 'FINISHED' ? '🏁' : v.phase === 'REVIEW' ? '📖' : '';
+  const picked = v.teams.filter((t) => t.animalId !== null).length;
+  idleText = v.paused ? '⏸' : v.phase === 'LOBBY' ? `${joined}/${v.teams.length} 입장 · ${picked}/${v.teams.length} 선택` : v.phase === 'DRAWN' ? '추첨 완료' : v.phase === 'READY' ? '곧 시작' : v.phase === 'RUNNING' && v.step === 'ROUND_SUMMARY' ? '결과 발표' : v.phase === 'FINISHED' ? '🏁' : v.phase === 'REVIEW' ? '📖' : '';
   const order = [...v.teams].sort((a, b) => a.rank - b.rank || a.team - b.team);
   const status = (t: TvView['teams'][number]) => {
     if (v.phase === 'TRAP_SETUP') return t.status.setupConfirmed ? '설치 확정' : '설치 중';
-    if (v.phase === 'LOBBY' || v.phase === 'DRAWN') return t.status.joined ? '✔ 입장' : '대기';
+    if (v.phase === 'LOBBY') return t.animalId !== null ? `${t.animal.emoji} 선택` : t.status.joined ? '선택 중' : '대기';
+    if (v.phase === 'DRAWN') return '자리 추첨 완료';
     if (v.phase !== 'RUNNING') return t.oasisRank ? `🌴 ${t.oasisRank}등` : '';
     const s: string[] = [];
     if (v.step === 'MOVE_OPEN') s.push(t.status.boundLeft ? '⛓️ 속박' : t.status.moved ? '✔ 이동' : '…');
@@ -169,7 +171,7 @@ function render() {
     if (t.oasisRank) s.push(`🌴${t.oasisRank}`);
     return s.join(' ');
   };
-  $('#scores').innerHTML = order.map((t) => `<li style="--c:${TEAM_COLORS[t.team]}"><span class="rk">${t.rank}</span><span class="an" aria-hidden="true">${t.animal.emoji}</span><span>${esc(t.animal.name)}</span><span class="st">${status(t)}</span><span class="sc">${t.score}</span></li>`).join('');
+  $('#scores').innerHTML = order.map((t) => `<li style="--c:${TEAM_COLORS[t.team]}"><span class="rk">${t.rank}</span><span class="an" aria-hidden="true">${t.animal.emoji}</span><span>${esc(t.teamName)}</span><span class="st">${status(t)}</span><span class="sc">${t.score}</span></li>`).join('');
   // 라운드 사건(결과 단계에서만, 새 라운드일 때만 다시 그려 애니메이션)
   const key = `${v.round}:${v.step}:${v.events.length}`;
   if (key !== lastEventsKey) {
@@ -182,7 +184,7 @@ function render() {
 }
 
 function overlay(v: TvView): string {
-  if (v.phase === 'LOBBY') return `<div class="overlay"><div class="box"><h2>🌴 애니멀 트랩</h2><p style="font-size:3vh;margin:0 0 2.4vh">팀 카드 QR을 찍거나, 이 주소에서 판 코드·PIN을 넣어요</p>
+  if (v.phase === 'LOBBY') return `<div class="overlay"><div class="box"><h2>🌴 동물 선착순 선택</h2><p style="font-size:3vh;margin:0 0 2.4vh">팀 QR로 입장해 원하는 동물을 먼저 선택하세요. 모두 고르면 출발 자리를 추첨합니다.</p>
     <div class="join"><div><div class="muted">학생 주소</div><b>${esc(location.host)}</b></div><div><div class="muted">판 코드</div><b class="codebig">${esc(v.code)}</b></div></div></div></div>`;
   // 종료 후에는 교사가 고른 것(순위 / 덫 지도 / 문항 하나)만 띄운다
   const d = v.reviewDisplay;
@@ -196,9 +198,9 @@ function overlay(v: TvView): string {
     if (d.mode === 'map' && v.trapMap) return '';
     const winners = v.teams.filter((t) => t.rank === 1);
     const order = [...v.teams].sort((a, b) => a.rank - b.rank || a.team - b.team);
-    return `<div class="overlay"><div class="box"><div class="big" aria-hidden="true">🏆 ${winners.map((w) => w.animal.emoji).join(' ')}</div><h2>${winners.length > 1 ? '공동 우승!' : '우승!'} ${winners.map((w) => esc(w.animal.name)).join(' · ')}</h2>
+    return `<div class="overlay"><div class="box"><div class="big" aria-hidden="true">🏆 ${winners.map((w) => w.animal.emoji).join(' ')}</div><h2>${winners.length > 1 ? '공동 우승!' : '우승!'} ${winners.map((w) => esc(w.teamName)).join(' · ')}</h2>
       <p style="font-size:2.6vh;margin:0 0 1.6vh">${winners[0]?.score ?? 0}점 · ${v.endReason === 'manual' ? '선생님이 게임을 마쳤어요' : '시간 종료'}</p>
-      <table class="summary"><thead><tr><th>순위</th><th>팀</th><th>정답</th><th>오답</th><th>상대 구역</th><th>🌴</th><th>점수</th></tr></thead><tbody>${order.map((t) => `<tr><td>${t.rank}</td><td>${t.animal.emoji} ${esc(t.animal.name)}</td><td>${t.summary?.correct ?? 0}</td><td>${t.summary?.wrong ?? 0}</td><td>${t.summary?.zones ?? 0}</td><td>${t.summary?.oasisRank ?? '–'}</td><td><b>${t.score}</b></td></tr>`).join('')}</tbody></table></div></div>`;
+      <table class="summary"><thead><tr><th>순위</th><th>팀</th><th>정답</th><th>오답</th><th>상대 구역</th><th>🌴</th><th>점수</th></tr></thead><tbody>${order.map((t) => `<tr><td>${t.rank}</td><td>${t.animal.emoji} ${esc(t.teamName)} · ${esc(t.animal.name)}</td><td>${t.summary?.correct ?? 0}</td><td>${t.summary?.wrong ?? 0}</td><td>${t.summary?.zones ?? 0}</td><td>${t.summary?.oasisRank ?? '–'}</td><td><b>${t.score}</b></td></tr>`).join('')}</tbody></table></div></div>`;
   }
   return '';
 }

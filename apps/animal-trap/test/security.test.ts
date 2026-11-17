@@ -91,7 +91,7 @@ function paths(v: unknown, prefix = '', out = new Set<string>()): Set<string> {
 }
 const PUBLIC = ['code', 'title', 'phase', 'step', 'round', 'stateVersion', 'serverNow', 'paused', 'mainRemainingMs', 'phaseRemainingMs',
   'config.durationMs', 'config.moveMs', 'config.quizMs', 'config.setupMs', 'config.autoNext', 'config.teamCount',
-  'teams[]', 'teams[].team', 'teams[].animal.code', 'teams[].animal.name', 'teams[].animal.emoji', 'teams[].zone', 'teams[].pos', 'teams[].score', 'teams[].rank', 'teams[].oasisRank',
+  'teams[]', 'teams[].team', 'teams[].teamName', 'teams[].animalId', 'teams[].animal.code', 'teams[].animal.name', 'teams[].animal.emoji', 'teams[].zone', 'teams[].pos', 'teams[].score', 'teams[].rank', 'teams[].oasisRank',
   'teams[].status.joined', 'teams[].status.setupConfirmed', 'teams[].status.moved', 'teams[].status.quiz', 'teams[].status.boundLeft', 'teams[].status.confusedLeft',
   'teams[].summary', 'teams[].summary.correct', 'teams[].summary.wrong', 'teams[].summary.zones', 'teams[].summary.oasisRank',
   'events[]', 'events[].type', 'events[].team', 'events[].from', 'events[].to', 'events[].reason', 'events[].points', 'events[].zone', 'events[].correct', 'events[].timeout',

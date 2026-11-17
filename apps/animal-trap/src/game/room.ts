@@ -46,6 +46,10 @@ export interface RoomState {
   /** 판 생성 요청 식별자 — 응답이 유실돼 다시 보낸 생성 요청에 같은 자격을 돌려주기 위해 */
   createId: string;
   config: RoomConfig;
+  /** 교사가 정한 팀 이름. 예전 판에는 없을 수 있어 화면에서 기본 이름으로 보정한다. */
+  teamNames?: string[];
+  /** 팀별로 선점한 동물 번호. 새 판은 로비에서 선택하며, 예전 판은 팀 번호와 같은 동물로 보정한다. */
+  animalByTeam?: (number | null)[];
   phase: RoomPhase;
   step: RoundStep | null;
   stateVersion: number;
@@ -72,6 +76,8 @@ export interface RoomState {
 export type Actor = { kind: 'teacher' } | { kind: 'team'; team: number } | { kind: 'system' };
 export type Command =
   | { type: 'draw' } | { type: 'startSetup' } | { type: 'startGame' }
+  | { type: 'claimAnimal'; animal: number }
+  | { type: 'resetAnimal'; team: number }
   /** 교사 진행 버튼은 '지금 보고 있는 라운드·단계'를 함께 보낸다. 그사이 마감으로 단계가 바뀌었으면 STALE */
   | { type: 'next'; round: number } | { type: 'closePhase'; target: Target }
   | { type: 'pause' } | { type: 'resume' } | { type: 'finish' } | { type: 'review' } | { type: 'revealTraps' }
@@ -115,15 +121,19 @@ export function validConfig(c: RoomConfig): boolean {
     && (c.teamCount === undefined || (Number.isInteger(c.teamCount) && c.teamCount >= 4 && c.teamCount <= TEAMS));
 }
 
-export function createRoom(input: { code: string; title: string; setName: string; config: RoomConfig; seed: number; creds: Creds; createId?: string }, bank: readonly BankQuestion[], now: number): { state: RoomState; warnings: string[] } | { error: CreateError } {
+export function createRoom(input: { code: string; title: string; setName: string; teamNames?: string[]; config: RoomConfig; seed: number; creds: Creds; createId?: string }, bank: readonly BankQuestion[], now: number): { state: RoomState; warnings: string[] } | { error: CreateError } {
   if (!validConfig(input.config)) return { error: 'BAD_CONFIG' };
   const count = input.config.teamCount ?? TEAMS;
   if (input.creds.pins.length !== count) return { error: 'BAD_CONFIG' };
+  const teamNames = input.teamNames ?? Array.from({ length: count }, (_, i) => `${i + 1}팀`);
+  if (teamNames.length !== count || teamNames.some((name) => typeof name !== 'string' || !name.trim() || name.trim().length > 20) || new Set(teamNames.map((name) => name.trim())).size !== count) return { error: 'BAD_CONFIG' };
   const v = validateBank(bank);
   if (v.error) return { error: v.error };
   const state: RoomState = {
     v: 1, code: input.code, title: input.title, setName: input.setName, createdAt: now, createId: input.createId ?? '', config: { ...input.config, teamCount: count },
     phase: 'LOBBY', step: null, stateVersion: 1, rngState: input.seed >>> 0,
+    teamNames: teamNames.map((name) => name.trim()),
+    animalByTeam: input.teamNames ? Array(count).fill(null) : Array.from({ length: count }, (_, i) => i),
     zones: null, setupTraps: null, confirmed: Array(count).fill(false), committed: null, pending: null,
     moves: Array(count).fill(null), answers: Array(count).fill(null), clock: newClock(input.config.durationMs),
     finishAfterRound: false, endReason: null, lastEvents: [], eventSeq: 0, cancelled: [], processed: {}, creds: input.creds,
@@ -232,8 +242,16 @@ function apply(c: Ctx, actor: Actor, cmd: Command): CmdResult {
     switch (cmd.type) {
       case 'draw': // 로비에서 한 번만 (다시 추첨을 허용하면 늦게 도착한 옛 요청이 재추첨할 수 있다)
         if (s.phase !== 'LOBBY') return fail('BAD_PHASE');
+        if (s.animalByTeam && s.animalByTeam.some((animal) => animal === null)) return fail('ANIMALS_NOT_READY');
         { const rng = makeRng(s.rngState); s.zones = drawZones(rng, s.creds.pins.length); s.rngState = rng.state(); }
         s.phase = 'DRAWN'; return OK;
+      case 'resetAnimal': {
+        if (s.phase !== 'LOBBY') return fail('BAD_PHASE');
+        if (!Number.isInteger(cmd.team) || cmd.team < 0 || cmd.team >= s.creds.pins.length) return fail('BAD_TEAM');
+        const selected = s.animalByTeam ?? Array.from({ length: s.creds.pins.length }, (_, i) => i);
+        s.animalByTeam = [...selected]; s.animalByTeam[cmd.team] = null;
+        return OK;
+      }
       case 'startSetup': {
         if (s.phase !== 'DRAWN' || !s.zones) return fail('BAD_PHASE');
         const rng = makeRng(s.rngState); s.setupTraps = autoPlace(rng, s.zones); s.rngState = rng.state();
@@ -296,6 +314,15 @@ function apply(c: Ctx, actor: Actor, cmd: Command): CmdResult {
   if (!Number.isInteger(team) || team < 0 || team >= s.creds.pins.length) return fail('BAD_TEAM');
   if (s.clock.paused) return fail('PAUSED');
   switch (cmd.type) {
+    case 'claimAnimal': {
+      if (s.phase !== 'LOBBY') return fail('BAD_PHASE');
+      if (!Number.isInteger(cmd.animal) || cmd.animal < 0 || cmd.animal >= TEAMS) return fail('BAD_ANIMAL');
+      const selected = s.animalByTeam ?? Array.from({ length: s.creds.pins.length }, (_, i) => i);
+      if (selected.some((animal, i) => i !== team && animal === cmd.animal)) return fail('ANIMAL_TAKEN');
+      s.animalByTeam = [...selected];
+      s.animalByTeam[team] = cmd.animal;
+      return OK;
+    }
     case 'trapMove': case 'trapSwap': {
       if (s.phase !== 'TRAP_SETUP' || !s.setupTraps || !s.zones) return fail('BAD_PHASE');
       if (s.confirmed[team]) return fail('ALREADY_CONFIRMED');

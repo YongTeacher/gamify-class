@@ -75,7 +75,7 @@ export class TrapRoom extends DurableObject<Env> {
   }
 
   // ── RPC (Worker 만 부를 수 있다) ─────────────────────────────
-  async create(input: { code: string; title: string; setName: string; config: RoomConfig; createId: string }, bank: BankQuestion[]): Promise<Envelope> {
+  async create(input: { code: string; title: string; setName: string; teamNames: string[]; config: RoomConfig; createId: string }, bank: BankQuestion[]): Promise<Envelope> {
     if (this.state) {
       // 같은 생성 요청의 재전송(응답 유실)이면 같은 자격을 돌려준다. 다른 요청이면 코드 충돌
       if (input.createId && this.state.createId === input.createId) return ok({ hostKey: this.state.creds.hostKey, tvKey: this.state.creds.tvKey, pins: [...this.state.creds.pins], warnings: [] });
@@ -93,7 +93,13 @@ export class TrapRoom extends DurableObject<Env> {
 
   async lobby(): Promise<Envelope> {
     const s = this.state; if (!s) return no('NO_ROOM');
-    return ok({ title: s.title, phase: s.phase, teamCount: s.creds.pins.length, joined: s.creds.controlToken.map((t) => t !== null) });
+    const count = s.creds.pins.length;
+    return ok({
+      title: s.title, phase: s.phase, teamCount: count,
+      teamNames: s.teamNames?.length === count ? s.teamNames : Array.from({ length: count }, (_, i) => `${i + 1}팀`),
+      animalByTeam: s.animalByTeam?.length === count ? s.animalByTeam : Array.from({ length: count }, (_, i) => i),
+      joined: s.creds.controlToken.map((t) => t !== null)
+    });
   }
 
   async view(who: ViewRole): Promise<Envelope> {

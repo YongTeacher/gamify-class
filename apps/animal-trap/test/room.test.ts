@@ -71,6 +71,29 @@ test('기존 8팀 판에 teamCount 설정이 없어도 계속 진행된다', () 
   assert.equal(sim.s.committed!.teams.length, 8);
 });
 
+test('새 판은 팀명과 동물을 분리하고, 동물 선점이 끝난 뒤에만 출발 자리를 추첨한다', () => {
+  const count = 4;
+  const roomCreds = { ...creds, pins: creds.pins.slice(0, count), pinGen: creds.pinGen.slice(0, count), controlToken: creds.controlToken.slice(0, count), controlGen: creds.controlGen.slice(0, count), pinFails: creds.pinFails.slice(0, count) };
+  const made = createRoom({ code: 'ABCD', title: '테스트', setName: '세트', teamNames: ['별빛', '햇살', '새싹', '바다'], config: { ...DEFAULT_CONFIG, teamCount: count }, seed: 3, creds: roomCreds }, bank, 100);
+  if ('error' in made) throw new Error(made.error);
+  let state = made.state;
+  const run = (actor: Actor, cmd: CommandIn) => { const out = handle(state, bank, actor, cmd, 100); state = out.state; return out.result; };
+  assert.deepEqual(run(T, { type: 'draw' }), { ok: false, error: 'ANIMALS_NOT_READY' });
+  assert.ok(run(team(0), { type: 'claimAnimal', animal: 5 }).ok);
+  assert.deepEqual(run(team(1), { type: 'claimAnimal', animal: 5 }), { ok: false, error: 'ANIMAL_TAKEN' });
+  assert.ok(run(team(1), { type: 'claimAnimal', animal: 2 }).ok);
+  assert.ok(run(team(2), { type: 'claimAnimal', animal: 7 }).ok);
+  assert.ok(run(team(3), { type: 'claimAnimal', animal: 0 }).ok);
+  assert.ok(run(T, { type: 'resetAnimal', team: 2 }).ok);
+  assert.deepEqual(run(T, { type: 'draw' }), { ok: false, error: 'ANIMALS_NOT_READY' });
+  assert.ok(run(team(2), { type: 'claimAnimal', animal: 7 }).ok);
+  const view = teacherView(state, bank, 100);
+  assert.deepEqual(view.teams.map((t) => [t.teamName, t.animalId, t.animal.name]), [['별빛', 5, '캥거루'], ['햇살', 2, '얼룩말'], ['새싹', 7, '거북이'], ['바다', 0, '치타']]);
+  assert.ok(run(T, { type: 'draw' }).ok);
+  assert.equal(state.phase, 'DRAWN');
+  assert.equal(new Set(state.zones!).size, count);
+});
+
 /** 팀 0 이 1라운드에 덫을 밟도록 팀 1 의 덫 하나를 팀 0 출발 칸 옆으로 옮긴 판 */
 function simWithTrapForTeam0(config: Partial<RoomConfig> = {}) {
   const sim = new Sim(config);

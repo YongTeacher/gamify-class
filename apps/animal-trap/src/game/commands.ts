@@ -25,6 +25,7 @@ export function parseTeacherCommand(raw: unknown): Command | AccessCommand | nul
   switch (c.type) {
     case 'draw': case 'startSetup': case 'startGame': case 'pause': case 'resume': case 'finish': case 'review': case 'revealTraps': case 'showRanking':
       return { type: c.type };
+    case 'resetAnimal': return team(c.team) ? { type: 'resetAnimal', team: c.team } : null;
     case 'next': return roundNo(c.round) ? { type: 'next', round: c.round } : null;
     case 'closePhase': { const t = target(c.target); return t ? { type: 'closePhase', target: t } : null; }
     case 'revealQuestion': return typeof c.questionId === 'string' && c.questionId.length > 0 && c.questionId.length <= 80 ? { type: 'revealQuestion', questionId: c.questionId } : null;
@@ -37,6 +38,7 @@ export function parseTeacherCommand(raw: unknown): Command | AccessCommand | nul
 export function parseTeamCommand(raw: unknown): Command | null {
   const c = o(raw); if (!c) return null;
   switch (c.type) {
+    case 'claimAnimal': return int(c.animal, 0, 7) ? { type: 'claimAnimal', animal: c.animal } : null;
     case 'trapMove': return int(c.trapId, 0, 10_000) && isCell(c.to) ? { type: 'trapMove', trapId: c.trapId, to: c.to } : null;
     case 'trapSwap': return int(c.a, 0, 10_000) && int(c.b, 0, 10_000) ? { type: 'trapSwap', a: c.a, b: c.b } : null;
     case 'trapConfirm': return { type: 'trapConfirm' };

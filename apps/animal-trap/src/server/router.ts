@@ -31,7 +31,7 @@ export interface ApiResponse { status: number; body: Envelope }
 
 export type ViewRole = { role: 'teacher'; key: string } | { role: 'tv'; key: string } | { role: 'team'; team: number; pin: string; token: string };
 
-export interface CreateInput { code: string; title: string; setName: string; config: RoomConfig; createId: string }
+export interface CreateInput { code: string; title: string; setName: string; teamNames: string[]; config: RoomConfig; createId: string }
 export interface RoomPort {
   create(input: CreateInput, bank: BankQuestion[]): Promise<Envelope>;
   lobby(): Promise<Envelope>;
@@ -58,7 +58,8 @@ export const CODE_RE = /^[A-HJ-NP-Z2-9]{6}$/;
 const STATUS: Record<string, number> = {
   NOT_FOUND: 404, NO_ROOM: 404, METHOD: 405, BAD_REQUEST: 400, BAD_CODE: 400, ADMIN_DISABLED: 403, ADMIN_DENIED: 401,
   BAD_KEY: 401, BAD_PIN: 401, PIN_LOCKED: 429, NOT_CONTROLLER: 403, FORBIDDEN: 403, BAD_TEAM: 400, EXISTS: 409, CODE_BUSY: 503,
-  CREATE_UNCERTAIN: 503, ADMIN_RATE_LIMITED: 429, BAD_FILE: 400, BAD_CONFIG: 400, BANK_EMPTY_LEVEL: 422, BANK_TOO_LARGE: 422, BANK_INVALID: 422, STALE: 409, BAD_PHASE: 409, PAUSED: 409
+  CREATE_UNCERTAIN: 503, ADMIN_RATE_LIMITED: 429, BAD_FILE: 400, BAD_CONFIG: 400, BANK_EMPTY_LEVEL: 422, BANK_TOO_LARGE: 422, BANK_INVALID: 422, STALE: 409, BAD_PHASE: 409, PAUSED: 409,
+  ANIMALS_NOT_READY: 409, ANIMAL_TAKEN: 409, BAD_ANIMAL: 400
 };
 const reply = (env: Envelope): ApiResponse => ({ status: env.ok ? 200 : STATUS[env.error] ?? 409, body: env });
 const err = (error: string) => reply({ ok: false, error });
@@ -87,6 +88,8 @@ async function createGame(req: ApiRequest, p: Ports): Promise<ApiResponse> {
   const setName = cleanSetName(b.setName);
   const config = configFrom(b);
   if (!config) return err('BAD_CONFIG');
+  const teamNames = Array.isArray(b.teamNames) ? b.teamNames.map((name) => str(name, 20)) : Array.from({ length: config.teamCount! }, (_, i) => `${i + 1}팀`);
+  if (teamNames.length !== config.teamCount || teamNames.some((name) => !name) || new Set(teamNames).size !== teamNames.length) return err('BAD_CONFIG');
   // 세트를 비우면 문제은행 전체 — 300문항이 넘으면 난이도 비율대로 무작위 300문항
   const bank = fitBank(await p.questions(setName), BANK_MAX, Math.random);
   for (let attempt = 0; attempt < 5; attempt++) {
@@ -94,7 +97,7 @@ async function createGame(req: ApiRequest, p: Ports): Promise<ApiResponse> {
     if (!CODE_RE.test(code)) continue;
     // D1 에 먼저 코드를 예약한다(PK). DO 생성이 실패하면 예약을 지운다 → 고립된 DO·D1 행이 남지 않는다
     if (!(await p.reserveGame({ code, title, setName, createdAt: p.now() }))) continue;
-    const input = { code, title, setName, config, createId: p.randomId() };
+    const input = { code, title, setName, teamNames, config, createId: p.randomId() };
     let created: Envelope | null = null;
     // 결과가 불확실한 예외(DO 는 만들어졌는데 응답만 유실)에 대비해 같은 createId 로 한 번 더 —
     // DO 는 같은 createId 면 이미 만든 판의 자격을 그대로 돌려준다(멱등)
