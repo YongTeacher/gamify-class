@@ -6,7 +6,7 @@
  * 명령은 '지금 보고 있는 라운드·단계'를 함께 보낸다 — 그사이 마감됐으면 서버가 STALE 로 거절(새 단계를 닫지 않음).
  * ⚠️ 서버·교사 입력 글은 esc() 로. TV 열쇠는 #해시로만 TV 창에 넘긴다(서버 로그에 남지 않게).
  */
-import type { TeacherView } from '../../game/views.ts';
+import { ANIMALS, type TeacherView } from '../../game/views.ts';
 import { draw, TEAM_COLORS, type BoardModel } from '../shared/board.ts';
 import { call, command, Countdown, errText, live, mmss } from '../shared/net.ts';
 import { qrSvg } from '../shared/qr.ts';
@@ -49,13 +49,17 @@ function renderHome() {
   setLoadNo++;
   const games = savedGames();
   app.innerHTML = `
-    <div class="top"><h1>🌴 애니멀 트랩 · 교사</h1><div class="row"><a class="small" href="/guide" style="text-decoration:none">사용 안내</a><a class="small" href="/admin" style="text-decoration:none">📚 문제은행</a><a class="small" href="/" target="_blank" rel="noopener">학생 화면 열기 ↗</a></div></div>
+    <div class="top home-top"><h1>🌴 애니멀 트랩 <span>교사 로비</span></h1><div class="row"><a class="small" href="/guide" style="text-decoration:none">사용 안내</a><a class="small" href="/admin" style="text-decoration:none">📚 문제은행</a><a class="small" href="/" target="_blank" rel="noopener">학생 화면 열기 ↗</a></div></div>
+    <section class="lobby-hero" aria-labelledby="lobbyTitle">
+      <div class="lobby-hero-copy"><span class="lobby-kicker">CLASSROOM ADVENTURE · GAME SETUP</span><h2 id="lobbyTitle">덫을 피해,<br><em>오아시스를 차지하라!</em></h2><p>팀을 꾸리고 문제를 선택하면 새로운 모험이 시작됩니다.</p><div class="lobby-hero-tags"><span>🪤 숨겨진 덫</span><span>🧭 정찰</span><span>⚡ 실시간 퀴즈</span></div></div>
+      <div class="lobby-map" aria-hidden="true"><span class="lobby-map-path"></span><span class="lobby-map-token token-a">🐯</span><span class="lobby-map-token token-b">🦊</span><span class="lobby-map-token token-c">🐻</span><span class="lobby-map-token token-d">🐰</span><span class="lobby-map-oasis">💧<small>OASIS</small></span><span class="lobby-map-trap">🪤</span></div>
+    </section>
     <div class="layout home-layout">
-      <section class="card form" aria-labelledby="mk">
-        <h2 id="mk">새 판 만들기</h2>
-        <label>판 제목<input id="title" maxlength="60" placeholder="예: 2학년 3반 효소 단원"></label>
-        <label>팀 수<select id="teamCount">${[4, 5, 6, 7, 8].map((n) => `<option value="${n}"${n === 8 ? ' selected' : ''}>${n}팀</option>`).join('')}</select></label>
-        <fieldset class="team-name-box"><legend>팀명</legend><div id="teamNames" class="team-name-grid"></div></fieldset>
+      <section class="card form game-setup" aria-labelledby="mk">
+        <div class="setup-heading"><span>01 / 게임 준비</span><h2 id="mk">새 판 만들기</h2><p>오늘의 대결 이름과 참가 팀을 정해 주세요.</p></div>
+        <div class="setup-basics"><label>판 제목<input id="title" maxlength="60" placeholder="예: 2학년 3반 효소 단원"></label>
+        <label>참가 팀 수<select id="teamCount">${[4, 5, 6, 7, 8].map((n) => `<option value="${n}"${n === 8 ? ' selected' : ''}>${n}팀</option>`).join('')}</select></label></div>
+        <fieldset class="team-name-box"><legend>🏁 참가 팀 <small>각 팀의 이름을 바꿀 수 있어요</small></legend><div id="teamNames" class="team-name-grid"></div></fieldset>
         <details class="advanced" id="advanced">
           <summary><span>⚙️ 세부 설정</span><small>문제 세트와 진행 시간을 설정해요</small></summary>
           <div class="advanced-body">
@@ -76,7 +80,7 @@ function renderHome() {
             <label style="display:flex;gap:8px;align-items:center;font-weight:600"><input id="autoNext" type="checkbox" style="width:auto"> 라운드 결과 5초 뒤 자동으로 다음 라운드</label>
           </div>
         </details>
-        <button class="btn" id="create">판 만들기</button>
+        <button class="btn" id="create">🌴 게임 판 만들기 <span aria-hidden="true">→</span></button>
       </section>
       <details class="card resume" id="resume" ${resumeOpen ? 'open' : ''}>
         <summary><span>이어하기</span><small>${games.length ? `이 브라우저에 저장된 판 ${games.length}개` : '저장된 판 없음'}</small></summary>
@@ -91,7 +95,7 @@ function renderHome() {
   const renderTeamNames = () => {
     const count = Number($<HTMLSelectElement>('#teamCount').value);
     const old = [...document.querySelectorAll<HTMLInputElement>('#teamNames input')].map((input) => input.value);
-    $('#teamNames').innerHTML = Array.from({ length: count }, (_, i) => `<label><span>${i + 1}팀</span><input data-team-name="${i}" maxlength="20" value="${esc(old[i] || `${i + 1}팀`)}" aria-label="${i + 1}팀 팀명"></label>`).join('');
+    $('#teamNames').innerHTML = Array.from({ length: count }, (_, i) => `<label class="team-slot" style="--team-color:${TEAM_COLORS[i]}"><span class="team-slot-avatar" aria-hidden="true">${ANIMALS[i].emoji}</span><span class="team-slot-fields"><span class="team-slot-number">PLAYER ${String(i + 1).padStart(2, '0')}</span><input data-team-name="${i}" maxlength="20" value="${esc(old[i] || `${i + 1}팀`)}" aria-label="${i + 1}팀 팀명"></span></label>`).join('');
   };
   $<HTMLSelectElement>('#teamCount').onchange = renderTeamNames;
   renderTeamNames();
