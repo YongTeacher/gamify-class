@@ -102,7 +102,6 @@ test('히든 스팟 보상은 도착 후 한 번만 받고 점수·덫·순간�
   sim.ok(T, { type: 'closePhase', target: { phase: 'RUNNING', step: 'MOVE_OPEN', round: 2 } });
   assert.equal(sim.s.committed!.teams[0].score, 9, '발견한 스팟을 다시 밟아도 보상 없음');
 
-  sim.next();
   const t = sim.s.committed!.teams[0];
   t.bonusQueue = ['swap', 'drain', 'trap', 'teleport'];
   t.score = 15; sim.s.committed!.teams[1].score = 4;
@@ -116,12 +115,33 @@ test('히든 스팟 보상은 도착 후 한 번만 받고 점수·덫·순간�
   sim.ok(team(0), { type: 'placeTrap', to: trapCell });
   assert.equal(sim.s.committed!.traps.length, before + 1);
   assert.deepEqual(sim.do(team(0), { type: 'placeTrap', to: trapCell }).result, { ok: false, error: 'NO_BONUS' });
+  sim.next();
   const remote = [...Array(256).keys()].find((cell) => Math.abs(Math.floor(cell / 16) - Math.floor(sim.pos(0) / 16)) > 3 && !sim.s.committed!.traps.some((trap) => trap.cell === cell))!;
   assert.deepEqual(sim.do(team(0), { type: 'move', round: 3, to: remote }).result, { ok: false, error: 'BAD_MOVE' });
   sim.ok(team(0), { type: 'teleport', round: 3, to: remote });
   sim.ok(T, { type: 'closePhase', target: { phase: 'RUNNING', step: 'MOVE_OPEN', round: 3 } });
   assert.equal(sim.pos(0), remote);
   assert.equal(sim.s.committed!.teams[0].bonusQueue!.includes('teleport'), false);
+});
+
+test('점수 교환은 발견한 결과 화면에서만, 순간이동과 3칸 이동은 다음 라운드까지만 유효하다', () => {
+  const sim = new Sim({ teamCount: 4, autoNext: true }).start();
+  const destination = sim.safeNeighbor(0);
+  sim.s.committed!.hiddenSpots = [{ cell: destination, effect: 'swap', claimedBy: null }];
+  sim.ok(team(0), { type: 'move', round: 1, to: destination });
+  sim.ok(T, { type: 'closePhase', target: { phase: 'RUNNING', step: 'MOVE_OPEN', round: 1 } });
+  assert.equal(sim.s.committed!.teams[0].bonusQueue?.includes('swap'), true);
+  assert.equal(sim.s.clock.phaseEndsAt! - sim.now, 20_000, '선택할 시간이 필요한 결과 화면은 20초');
+  sim.next();
+  assert.equal(sim.s.committed!.teams[0].bonusQueue?.includes('swap'), false);
+  assert.deepEqual(sim.do(team(0), { type: 'swapScores', target: 1 }).result, { ok: false, error: 'BAD_PHASE' });
+
+  // 이미 얻은 이동 보상도 해당 라운드를 건너뛰면 사라진다.
+  sim.s.committed!.teams[0].bonusQueue = ['teleport'];
+  sim.s.committed!.teams[0].boostAvailable = true;
+  sim.ok(T, { type: 'closePhase', target: { phase: 'RUNNING', step: 'MOVE_OPEN', round: 2 } });
+  assert.equal(sim.s.committed!.teams[0].bonusQueue?.includes('teleport'), false);
+  assert.equal(sim.s.committed!.teams[0].boostAvailable, false);
 });
 
 test('최대 3칸 이동 보상은 실제 이동 뒤에만 소모된다', () => {

@@ -102,10 +102,8 @@ export function resolve(committed: Committed, pending: Pending, correct: readonl
     events.push({ type: 'move', team: l.team, from: l.from, to: l.to });
     t.pos = l.to;
     if (l.teleport) {
-      const queue = t.bonusQueue ?? [];
-      t.bonusQueue = queue.filter((effect, i) => effect !== 'teleport' || i !== queue.indexOf('teleport'));
       events.push({ type: 'bonusUsed', team: l.team, effect: 'teleport' });
-    } else if (t.boostAvailable) t.boostAvailable = false;
+    }
     t.visited = insertSorted(t.visited, l.to); // 모든 실제 착지는 방문 기록 (덫 칸 포함)
     if (l.kind === 'safe' && l.bonus) { t.score += l.bonus; events.push({ type: 'safe', team: l.team, cell: l.to, points: l.bonus }); }
     if (l.zoneBonus !== null) {
@@ -163,6 +161,12 @@ export function resolve(committed: Committed, pending: Pending, correct: readonl
       events.push({ type: 'oasis', team: l.team, rank, points: OASIS_POINTS(rank) });
     }
     next.oasisArrivals += arrivals.length;
+  }
+
+  // 이동 보상은 다음 라운드 한 번만 유효하다. 움직이지 못했어도 그 라운드가 끝나면 만료한다.
+  for (const t of next.teams) {
+    t.bonusQueue = (t.bonusQueue ?? []).filter((effect) => effect !== 'teleport');
+    t.boostAvailable = false;
   }
 
   // 히든 스팟은 라운드가 확정될 때만 획득한다. 동시 착지한 팀은 둘 다 보상을 받는다.

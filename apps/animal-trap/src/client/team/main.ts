@@ -326,12 +326,15 @@ function bonusPanel(v: TeamView): string {
   if (!v.me.bonuses.length && !v.me.boostAvailable) return '';
   const targets = v.teams.filter((team) => team.team !== v.me.team).map((team) => `<option value="${team.team}">${esc(team.teamName)} · ${team.score}점</option>`).join('');
   const has = (effect: string) => v.me.bonuses.includes(effect as TeamView['me']['bonuses'][number]);
+  const summary = v.step === 'ROUND_SUMMARY';
   const rows = [
-    has('swap') ? `<div class="row"><span>🔁 점수 교환</span><select id="swapTarget" aria-label="교환할 상대팀">${targets}</select><button class="small" id="swapGo" ${disabledUnlessActive(v)}>사용</button></div>` : '',
-    has('drain') ? `<div class="row"><span>⚡ 상대팀 −10점</span><select id="drainTarget" aria-label="감점할 상대팀">${targets}</select><button class="small" id="drainGo" ${disabledUnlessActive(v)}>사용</button></div>` : '',
-    has('trap') ? `<button class="btn ghost" id="trapBonus" ${disabledUnlessActive(v)}>🪤 덫 1개 추가 설치${ui.bonusMode === 'trap' ? ' · 칸 선택 중' : ''}</button>` : '',
-    has('teleport') ? `<button class="btn ghost" id="teleportBonus" ${canMove(v) ? '' : 'disabled'}>🌀 원하는 칸으로 이동${ui.bonusMode === 'teleport' ? ' · 칸 선택 중' : ''}</button>` : '',
-    v.me.boostAvailable ? '<p class="muted">👣 다음 이동은 최대 3칸까지 가능합니다. 이동하면 사용됩니다.</p>' : ''
+    summary && has('swap') ? `<div class="row"><span>🔁 점수 교환</span><select id="swapTarget" aria-label="교환할 상대팀">${targets}</select><button class="small" id="swapGo" ${disabledUnlessActive(v)}>지금 사용</button></div>` : '',
+    summary && has('drain') ? `<div class="row"><span>⚡ 상대팀 −10점</span><select id="drainTarget" aria-label="감점할 상대팀">${targets}</select><button class="small" id="drainGo" ${disabledUnlessActive(v)}>지금 사용</button></div>` : '',
+    summary && has('trap') ? `<button class="btn ghost" id="trapBonus" ${disabledUnlessActive(v)}>🪤 지금 덫 1개 추가 설치${ui.bonusMode === 'trap' ? ' · 칸 선택 중' : ''}</button>` : '',
+    summary && (has('swap') || has('drain') || has('trap')) ? '<p class="muted">점수·덫 보상은 이 결과 화면이 끝나면 사라집니다.</p>' : '',
+    !summary && has('teleport') ? `<button class="btn ghost" id="teleportBonus" ${canMove(v) ? '' : 'disabled'}>🌀 이번 라운드에 순간이동${ui.bonusMode === 'teleport' ? ' · 칸 선택 중' : ''}</button>` : '',
+    summary && has('teleport') ? '<p class="muted">🌀 순간이동은 다음 라운드 이동 때 한 번 사용할 수 있어요.</p>' : '',
+    v.me.boostAvailable ? `<p class="muted">👣 ${summary ? '다음' : '이번'} 라운드에 최대 3칸 이동할 수 있어요. 해당 라운드가 끝나면 사라집니다.</p>` : ''
   ].filter(Boolean).join('');
   const picker = ui.bonusMode ? `<p class="muted">게임판에서 칸을 누르거나 좌표를 고르세요. 선택: ${ui.bonusCell === null ? '없음' : coord(ui.bonusCell)}</p>${cellPicker('bonusAt', '히든 보상 사용할 칸', 16, ui.bonusCell, v)}<button class="btn" id="bonusGo" ${ui.bonusCell === null || !canAct(v) ? 'disabled' : ''}>${ui.bonusMode === 'trap' ? '이 칸에 덫 설치' : '이 칸으로 순간이동'}</button><button class="btn ghost" id="bonusCancel">취소</button>` : '';
   return `<div class="card"><h2>✨ 히든 스팟 보상</h2>${rows}${picker}</div>`;

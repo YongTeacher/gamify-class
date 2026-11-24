@@ -36,8 +36,8 @@ export interface TeamState {
   bindRounds: number[];    // 이동할 수 없는 라운드 번호들
   confuseRounds: number[]; // 센서가 숨겨지는 라운드 번호들
   asked: string[];         // 이 팀에 낸 문항 id (오래된 순)
-  bonusQueue?: ChoiceEffect[]; // 예전 판에는 없음. 팀이 선택해 사용할 히든 효과
-  boostAvailable?: boolean;   // 다음 실제 이동 1회에 최대 3칸
+  bonusQueue?: ChoiceEffect[]; // 점수·덫: 발견 직후 결과 화면 한정, 순간이동: 다음 라운드 한정
+  boostAvailable?: boolean;   // 다음 라운드 한정 최대 3칸 이동
 }
 
 /** 확정 상태 (DESIGN §4-3: committed) */

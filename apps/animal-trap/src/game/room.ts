@@ -25,6 +25,7 @@ export type RoundStep = 'MOVE_OPEN' | 'QUESTION_OPEN' | 'ROUND_SUMMARY';
 
 export interface RoomConfig { durationMs: number; moveMs: number; quizMs: number; setupMs: number; autoNext: boolean; teamCount?: number }
 export const SUMMARY_AUTO_MS = 5000;
+const HIDDEN_CHOICE_SUMMARY_MS = 20000;
 export const CONFIG_RANGE = {
   durationMs: [60_000, 60 * 60_000], moveMs: [10_000, 60_000], quizMs: [20_000, 120_000], setupMs: [60_000, 300_000]
 } as const;
@@ -158,6 +159,8 @@ function finishSetup(c: Ctx) {
 }
 
 function openMove(c: Ctx) {
+  // 점수·추가 덫 보상은 발견 직후 결과 화면에서만 사용한다.
+  for (const team of c.s.committed?.teams ?? []) team.bonusQueue = (team.bonusQueue ?? []).filter((effect) => effect === 'teleport');
   c.s.step = 'MOVE_OPEN';
   c.s.moves = Array(c.s.creds.pins.length).fill(null);
   c.s.teleportMoves = Array(c.s.creds.pins.length).fill(false);
@@ -194,7 +197,8 @@ function resolveRound(c: Ctx) {
   c.events.push({ seq: s.eventSeq, round: r.committed.round, events: r.events });
   if (s.finishAfterRound || mainRemaining(s.clock, c.now) <= 0) { finish(c, 'time'); return; }
   s.step = 'ROUND_SUMMARY';
-  s.clock = setPhase(s.clock, c.now, s.config.autoNext ? SUMMARY_AUTO_MS : null);
+  const hasChoice = s.committed.teams.some((team) => (team.bonusQueue ?? []).some((effect) => effect !== 'teleport'));
+  s.clock = setPhase(s.clock, c.now, s.config.autoNext ? (hasChoice ? HIDDEN_CHOICE_SUMMARY_MS : SUMMARY_AUTO_MS) : null);
 }
 
 function lockMoves(c: Ctx) {
@@ -362,7 +366,7 @@ function apply(c: Ctx, actor: Actor, cmd: Command): CmdResult {
       if (movableTeams(s).every((t) => s.moves[t] !== null)) lockMoves(c);
       return OK;
     case 'swapScores': case 'drainScore': case 'placeTrap': {
-      if (s.phase !== 'RUNNING' || (s.step !== 'MOVE_OPEN' && s.step !== 'ROUND_SUMMARY') || !s.committed) return fail('BAD_PHASE');
+      if (s.phase !== 'RUNNING' || s.step !== 'ROUND_SUMMARY' || !s.committed) return fail('BAD_PHASE');
       const effect = cmd.type === 'swapScores' ? 'swap' : cmd.type === 'drainScore' ? 'drain' : 'trap';
       const own = s.committed.teams[team];
       const queue = own.bonusQueue ?? [];
