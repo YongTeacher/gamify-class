@@ -56,7 +56,7 @@ export function land(committed: Committed, moves: readonly (Cell | null | undefi
     if (isOasis(dest)) {
       landing.kind = 'oasis';
       landing.oasisNew = t.oasisRound === null;
-    } else if (zone !== -1 && zone !== t.zone && committed.teams.some((other) => other.zone === zone)) {
+    } else if (zone !== -1 && zone !== t.zone) {
       landing.kind = 'zone';
       if (!t.opponentZones.includes(zone)) { landing.bonus = ZONE_BONUS; landing.zoneBonus = zone; }
     } else {

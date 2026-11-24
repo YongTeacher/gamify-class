@@ -33,7 +33,7 @@ export interface PublicTeam {
   team: number; teamName: string; animalId: number | null; animal: { code: string; name: string; emoji: string };
   zone: number | null; pos: Cell | null; score: number; rank: number; oasisRank: number | null;
   status: { joined: boolean; setupConfirmed: boolean; moved: boolean; quiz: 'none' | 'pending' | 'done'; boundLeft: number; confusedLeft: number };
-  /** 종료 후에만: 공개 사건(정오·상대 구역·오아시스)의 누적 요약 */
+  /** 종료 후에만: 공개 사건(정오·다른 출발 구역·오아시스)의 누적 요약 */
   summary: null | { correct: number; wrong: number; zones: number; oasisRank: number | null };
 }
 export interface RevealedQuestion { id: string; level: Level; text: string; choices: string[]; answer: number; explanation: string }

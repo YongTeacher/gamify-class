@@ -141,7 +141,7 @@ function eventText(v: TvView, e: PublicEvent): string | null {
   switch (e.type) {
     case 'quiz': return `<li><span>${a(e.team)} ${e.correct ? '🎉 정답! 덫 제거' : e.timeout ? '⏰ 시간 초과' : '😵 오답'}</span>${p(e.points)}</li>`;
     case 'oasis': return `<li><span>${a(e.team)} 🌴 오아시스 ${e.rank}등!</span>${p(e.points)}</li>`;
-    case 'zone': return `<li><span>${a(e.team)} 🏁 상대 출발 구역</span>${p(e.points)}</li>`;
+    case 'zone': return `<li><span>${a(e.team)} 🏁 다른 출발 구역</span>${p(e.points)}</li>`;
     case 'zonePenalty': return `<li><span>${a(e.attacker)} 🚨 ${a(e.team)} 출발 구역 침입</span>${p(e.points)}</li>`;
     case 'effect': return `<li><span>${a(e.team)} ${{ return: '🌀 귀환!', bind: '⛓️ 속박!', confuse: '🌫️ 혼란!' }[e.effect]}</span><span></span></li>`;
     default: return null;
@@ -201,7 +201,7 @@ function overlay(v: TvView): string {
     const order = [...v.teams].sort((a, b) => a.rank - b.rank || a.team - b.team);
     return `<div class="overlay"><div class="box"><div class="big" aria-hidden="true">🏆 ${winners.map((w) => w.animal.emoji).join(' ')}</div><h2>${winners.length > 1 ? '공동 우승!' : '우승!'} ${winners.map((w) => esc(w.teamName)).join(' · ')}</h2>
       <p style="font-size:2.6vh;margin:0 0 1.6vh">${winners[0]?.score ?? 0}점 · ${v.endReason === 'manual' ? '선생님이 게임을 마쳤어요' : '시간 종료'}</p>
-      <table class="summary"><thead><tr><th>순위</th><th>팀</th><th>정답</th><th>오답</th><th>상대 구역</th><th>🌴</th><th>점수</th></tr></thead><tbody>${order.map((t) => `<tr><td>${t.rank}</td><td>${t.animal.emoji} ${esc(t.teamName)} · ${esc(t.animal.name)}</td><td>${t.summary?.correct ?? 0}</td><td>${t.summary?.wrong ?? 0}</td><td>${t.summary?.zones ?? 0}</td><td>${t.summary?.oasisRank ?? '–'}</td><td><b>${t.score}</b></td></tr>`).join('')}</tbody></table></div></div>`;
+      <table class="summary"><thead><tr><th>순위</th><th>팀</th><th>정답</th><th>오답</th><th>다른 구역</th><th>🌴</th><th>점수</th></tr></thead><tbody>${order.map((t) => `<tr><td>${t.rank}</td><td>${t.animal.emoji} ${esc(t.teamName)} · ${esc(t.animal.name)}</td><td>${t.summary?.correct ?? 0}</td><td>${t.summary?.wrong ?? 0}</td><td>${t.summary?.zones ?? 0}</td><td>${t.summary?.oasisRank ?? '–'}</td><td><b>${t.score}</b></td></tr>`).join('')}</tbody></table></div></div>`;
   }
   return '';
 }

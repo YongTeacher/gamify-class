@@ -287,7 +287,7 @@ const pts = (n: number) => `<span class="p ${n >= 0 ? 'plus' : 'minus'}">${n >= 
 function eventLine(e: PublicEvent): string | null {
   switch (e.type) {
     case 'safe': return `<li>🌱 처음 밟은 안전한 칸${pts(e.points)}</li>`;
-    case 'zone': return `<li>🏁 다른 팀 출발 구역 도착${pts(e.points)}</li>`;
+    case 'zone': return `<li>🏁 다른 출발 구역 도착${pts(e.points)}</li>`;
     case 'zonePenalty': return `<li>🚨 상대팀이 우리 출발 구역에 들어왔어요${pts(e.points)}</li>`;
     case 'quiz': return `<li>${e.correct ? '🎉 정답! 덫을 모두 없앴어요' : e.timeout ? '⏰ 시간 초과(오답)' : '😵 오답 · 덫이 남았어요'}${pts(e.points)}</li>`;
     case 'effect': return `<li>${{ return: '🌀 귀환 덫! 출발 칸으로 돌아갔어요', bind: '⛓️ 속박 덫! 다음 2라운드 이동 불가', confuse: '🌫️ 혼란 덫! 다음 2라운드 센서가 숨겨져요' }[e.effect]}</li>`;
@@ -372,7 +372,7 @@ function panel(v: TeamView): string {
     const order = [...v.teams].sort((a, b) => a.rank - b.rank || a.team - b.team);
     const winners = order.filter((t) => t.rank === 1), s = me.summary;
     return (ui.reconMode ? reconPanel(v) : '') + `<div class="card big-result"><span class="e" aria-hidden="true">${me.rank === 1 ? '🏆' : '🌿'}</span>${me.rank === 1 ? (winners.length > 1 ? '공동 우승!' : '우승!') : me.rank + '위'} · ${me.score}점
-      ${s ? `<div class="stats" style="margin-top:12px"><div><b>${s.correct}</b>정답</div><div><b>${s.wrong}</b>오답</div><div><b>${s.zones}</b>상대 구역</div><div><b>${s.oasisRank ?? '–'}</b>오아시스 등수</div></div>` : ''}</div>
+      ${s ? `<div class="stats" style="margin-top:12px"><div><b>${s.correct}</b>정답</div><div><b>${s.wrong}</b>오답</div><div><b>${s.zones}</b>다른 구역</div><div><b>${s.oasisRank ?? '–'}</b>오아시스 등수</div></div>` : ''}</div>
       <div class="card"><h2>최종 순위</h2><ol class="rank">${order.map((t) => `<li class="${t.team === v.me.team ? 'mine' : ''}" style="--c:${TEAM_COLORS[t.team]}"><span>${t.rank}위</span><span aria-hidden="true">${t.animal.emoji}</span><span>${esc(t.teamName)} · ${esc(t.animal.name)}${t.team === v.me.team ? ' (우리)' : ''}</span><span>${t.score}점</span></li>`).join('')}</ol></div>
       ${reconOpen(v) && !ui.reconMode ? `<button class="btn ghost" id="recon">🔭 남은 정찰권 쓰기</button>` : ''}
       ${v.trapMap ? '<div class="card"><h2>🗺 전체 덫 지도 공개</h2><p class="muted" style="margin:0">게임판에 모든 팀의 덫이 팀 색 점으로 표시됐어요(흐린 점은 없어진 덫).</p></div>' : ''}

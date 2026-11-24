@@ -306,7 +306,7 @@ test('상대 출발 구역: 공격팀 최초 +10, 구역 주인 -5, 재방문 �
   assert.equal(tr.committed.teams[0].pos, SPAWN_CELL[0]);
 });
 
-test('상대 출발 구역: 두 팀이 같은 구역에 처음 들어오면 주인 -10, 빈 구역은 안전 칸', () => {
+test('상대 출발 구역: 두 팀이 같은 구역에 처음 들어오면 주인 -10, 빈 구역도 +10', () => {
   let g = placeTeam(game(), 0, cellOf(2, 7));
   g = placeTeam(g, 2, cellOf(2, 8));
   const moves = ZONES8.map((team) => team === 0 || team === 2 ? ZONES[1][2] : null);
@@ -316,8 +316,11 @@ test('상대 출발 구역: 두 팀이 같은 구역에 처음 들어오면 주�
 
   const four = placeTeam(newGame(makeRng(1), [0, 2, 4, 6], []), 0, cellOf(2, 7));
   const emptyZone = step(four, [ZONES[1][2], null, null, null]);
-  assert.equal(emptyZone.committed.teams[0].score, 1);
-  assert.equal(emptyZone.events.filter((e) => e.type === 'zone' || e.type === 'zonePenalty').length, 0);
+  assert.equal(emptyZone.committed.teams[0].score, 10);
+  assert.equal(emptyZone.events.filter((e) => e.type === 'zone').length, 1);
+  assert.equal(emptyZone.events.filter((e) => e.type === 'zonePenalty').length, 0);
+  const second = step(emptyZone.committed, [ZONES[1][3], null, null, null]);
+  assert.equal(second.committed.teams[0].score, 10, '빈 구역도 한 팀이 여러 번 밟아 점수를 반복 획득할 수 없다');
 });
 
 // ── 순위 ───────────────────────────────────────────────────────

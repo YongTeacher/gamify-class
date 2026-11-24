@@ -27,7 +27,7 @@ export interface TeamState {
   pos: Cell;
   score: number;
   visited: Cell[];         // 실제로 착지한 칸(+ 출발 칸). 오름차순
-  opponentZones: number[]; // +10 을 받고 그 구역 주인에게 -5를 적용한 출발 구역 id
+  opponentZones: number[]; // 자기 구역 외 +10을 받은 출발 구역 id (빈 구역 포함)
   oasisRound: number | null;
   oasisRank: number | null;
   reconAvailable: boolean;
@@ -70,9 +70,9 @@ export interface Landing {
   /** 착지 스냅샷의 활성 덫 id (모든 팀·모든 종류) */
   snapshot: number[];
   kind: LandingKind;
-  /** 확정 전 보너스 후보: 안전 +1 / 상대 구역 +10 */
+  /** 확정 전 보너스 후보: 안전 +1 / 자기 구역 외 출발 구역 +10 */
   bonus: number;
-  zoneBonus: number | null; // +10 을 받는 상대 구역 id
+  zoneBonus: number | null; // +10 을 받는 자기 구역 외 출발 구역 id
   firstVisit: boolean;
   oasisNew: boolean;
   level: Level | null;
