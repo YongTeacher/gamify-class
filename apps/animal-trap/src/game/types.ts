@@ -2,6 +2,7 @@
  * types.ts — 규칙 엔진의 상태 모양 (DESIGN §4·§5). JSON 으로 그대로 저장할 수 있게 Set·Map 을 쓰지 않는다.
  */
 import type { Cell } from './board.ts';
+import type { ChoiceEffect, HiddenEffect, HiddenSpot } from './hidden.ts';
 
 export type TrapType = 'normal' | 'return' | 'bind' | 'confuse';
 export type Level = '쉬움' | '보통' | '어려움';
@@ -35,6 +36,8 @@ export interface TeamState {
   bindRounds: number[];    // 이동할 수 없는 라운드 번호들
   confuseRounds: number[]; // 센서가 숨겨지는 라운드 번호들
   asked: string[];         // 이 팀에 낸 문항 id (오래된 순)
+  bonusQueue?: ChoiceEffect[]; // 예전 판에는 없음. 팀이 선택해 사용할 히든 효과
+  boostAvailable?: boolean;   // 다음 실제 이동 1회에 최대 3칸
 }
 
 /** 확정 상태 (DESIGN §4-3: committed) */
@@ -45,6 +48,7 @@ export interface Committed {
   oasisArrivals: number;   // 지금까지 오아시스에 도착한 팀 수
   /** 서버 전용 확정 문항 기록(복습·감사용). 어떤 학생·TV 뷰에도 그대로 내보내지 않는다 */
   quizLog: QuizRecord[];
+  hiddenSpots?: HiddenSpot[]; // 예전 판에는 없음. 미발견 위치는 뷰에 내보내지 않는다
 }
 
 export interface QuizRecord {
@@ -77,6 +81,7 @@ export interface Landing {
   oasisNew: boolean;
   level: Level | null;
   questionId: string | null;
+  teleport?: boolean;       // 히든 효과로 이 라운드에 원하는 칸으로 이동
 }
 
 /** 진행 중 라운드 (DESIGN §4-3: pending). 버리면 그 라운드가 없던 일이 된다 */
@@ -91,6 +96,8 @@ export type RoundEvent =
   | { type: 'safe'; team: number; cell: Cell; points: number }
   | { type: 'zone'; team: number; zone: number; points: number }
   | { type: 'zonePenalty'; team: number; attacker: number; points: number }
+  | { type: 'hidden'; team: number; cell: Cell; effect: HiddenEffect; points: number }
+  | { type: 'bonusUsed'; team: number; effect: ChoiceEffect; target?: number; points?: number }
   | { type: 'quiz'; team: number; level: Level; n: number; correct: boolean; timeout: boolean; points: number }
   | { type: 'trapsRemoved'; cell: Cell; count: number }
   | { type: 'effect'; team: number; effect: 'return' | 'bind' | 'confuse' }

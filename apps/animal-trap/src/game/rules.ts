@@ -8,8 +8,9 @@
  * ⚠️ 확정 규칙(사용자 2026-11-13): 안전 칸 최초 방문 +1, 오아시스 30/20/15.
  * ⚠️ land 는 Committed 를 바꾸지 않는다. Pending 을 버리면 그 라운드는 없던 일이 된다 (D5·D13).
  */
-import { isNeighbor, isOasis, neighbors, reconArea, validReconTopLeft, zoneOf, isCell } from './board.ts';
+import { colOf, isNeighbor, isOasis, neighbors, reconArea, rowOf, validReconTopLeft, zoneOf, isCell } from './board.ts';
 import type { Cell } from './board.ts';
+import { HIDDEN_GAIN } from './hidden.ts';
 import { levelFor } from './questions.ts';
 import type { Committed, Landing, Level, Pending, Phase, ReconResult, RoundEvent, TeamState, Trap } from './types.ts';
 
@@ -30,9 +31,12 @@ export const isBound = (team: TeamState, round: number): boolean => team.bindRou
 export const isConfused = (team: TeamState, round: number): boolean => team.confuseRounds.includes(round);
 
 /** 이동 검증: 8방향 1칸, 보드 안. 속박 라운드면 불가 */
-export function validMove(committed: Committed, team: number, to: unknown): to is Cell {
+export function validMove(committed: Committed, team: number, to: unknown, teleport = false): to is Cell {
   const t = committed.teams[team];
-  return !!t && isCell(to) && isNeighbor(t.pos, to) && !isBound(t, committed.round + 1);
+  if (!t || !isCell(to) || to === t.pos || isBound(t, committed.round + 1)) return false;
+  if (teleport) return (t.bonusQueue ?? []).includes('teleport');
+  if (t.boostAvailable) return Math.max(Math.abs(rowOf(t.pos) - rowOf(to)), Math.abs(colOf(t.pos) - colOf(to))) <= 3;
+  return isNeighbor(t.pos, to);
 }
 
 export type QuestionPicker = (team: number, level: Level, asked: readonly string[]) => string;
@@ -40,11 +44,12 @@ export type QuestionPicker = (team: number, level: Level, asked: readonly string
 /**
  * MOVE_OPEN 마감. moves[t] = 목적지 셀 또는 null(미제출). 잘못된 이동·속박 팀은 제자리로 처리.
  */
-export function land(committed: Committed, moves: readonly (Cell | null | undefined)[], pick: QuestionPicker): Pending {
+export function land(committed: Committed, moves: readonly (Cell | null | undefined)[], pick: QuestionPicker, teleports: readonly boolean[] = []): Pending {
   const round = committed.round + 1;
   const landings: Landing[] = committed.teams.map((t, team) => {
     const to = moves[team];
-    const moved = to != null && validMove(committed, team, to);
+    const teleport = teleports[team] === true;
+    const moved = to != null && validMove(committed, team, to, teleport);
     const base: Landing = { team, from: t.pos, to: t.pos, moved: false, snapshot: [], kind: 'stay', bonus: 0, zoneBonus: null,
       firstVisit: false, oasisNew: false, level: null, questionId: null };
     if (!moved) return base;
@@ -52,7 +57,7 @@ export function land(committed: Committed, moves: readonly (Cell | null | undefi
     const snapshot = activeTrapsAt(committed.traps, dest).map((x) => x.id);
     const firstVisit = !t.visited.includes(dest);
     const zone = zoneOf(dest);
-    const landing: Landing = { ...base, to: dest, moved: true, snapshot, firstVisit };
+    const landing: Landing = { ...base, to: dest, moved: true, snapshot, firstVisit, teleport };
     if (isOasis(dest)) {
       landing.kind = 'oasis';
       landing.oasisNew = t.oasisRound === null;
@@ -96,6 +101,11 @@ export function resolve(committed: Committed, pending: Pending, correct: readonl
     if (!l.moved) { events.push({ type: 'stay', team: l.team, reason: isBound(committed.teams[l.team], R) ? 'bound' : 'noMove' }); continue; }
     events.push({ type: 'move', team: l.team, from: l.from, to: l.to });
     t.pos = l.to;
+    if (l.teleport) {
+      const queue = t.bonusQueue ?? [];
+      t.bonusQueue = queue.filter((effect, i) => effect !== 'teleport' || i !== queue.indexOf('teleport'));
+      events.push({ type: 'bonusUsed', team: l.team, effect: 'teleport' });
+    } else if (t.boostAvailable) t.boostAvailable = false;
     t.visited = insertSorted(t.visited, l.to); // 모든 실제 착지는 방문 기록 (덫 칸 포함)
     if (l.kind === 'safe' && l.bonus) { t.score += l.bonus; events.push({ type: 'safe', team: l.team, cell: l.to, points: l.bonus }); }
     if (l.zoneBonus !== null) {
@@ -153,6 +163,22 @@ export function resolve(committed: Committed, pending: Pending, correct: readonl
       events.push({ type: 'oasis', team: l.team, rank, points: OASIS_POINTS(rank) });
     }
     next.oasisArrivals += arrivals.length;
+  }
+
+  // 히든 스팟은 라운드가 확정될 때만 획득한다. 동시 착지한 팀은 둘 다 보상을 받는다.
+  const available = new Map((committed.hiddenSpots ?? []).filter((spot) => spot.claimedBy === null).map((spot) => [spot.cell, spot.effect]));
+  for (const l of pending.landings) {
+    if (!l.moved) continue;
+    const effect = available.get(l.to);
+    if (!effect) continue;
+    const spot = next.hiddenSpots?.find((item) => item.cell === l.to);
+    if (spot && spot.claimedBy === null) spot.claimedBy = l.team;
+    const t = next.teams[l.team];
+    const points = effect === 'gain' ? HIDDEN_GAIN : 0;
+    if (points) t.score += points;
+    if (effect === 'stride') t.boostAvailable = true;
+    if (effect === 'swap' || effect === 'drain' || effect === 'teleport' || effect === 'trap') t.bonusQueue = [...(t.bonusQueue ?? []), effect];
+    events.push({ type: 'hidden', team: l.team, cell: l.to, effect, points });
   }
 
   // 8. 확정: 이미 끝난 라운드의 상태이상 기록만 정리. **현재 라운드 R 은 남긴다** —

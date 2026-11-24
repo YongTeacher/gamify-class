@@ -14,6 +14,7 @@ import type { BankQuestion } from './questions.ts';
 import { rankTeams, teamSensor } from './rules.ts';
 import type { RoomPhase, RoomState, RoundStep } from './room.ts';
 import type { Level, Phase, RoundEvent, TrapType } from './types.ts';
+import type { ChoiceEffect, HiddenEffect } from './hidden.ts';
 
 export const ANIMALS = [
   { code: 'A', name: '치타', emoji: '🐆' }, { code: 'B', name: '호랑이', emoji: '🐅' }, { code: 'C', name: '얼룩말', emoji: '🦓' },
@@ -25,6 +26,8 @@ export type PublicEvent =
   | { type: 'move'; team: number; from: Cell; to: Cell } | { type: 'stay'; team: number; reason: 'bound' | 'noMove' }
   | { type: 'safe'; team: number; points: number } | { type: 'zone'; team: number; zone: number; points: number }
   | { type: 'zonePenalty'; team: number; attacker: number; points: number }
+  | { type: 'hidden'; team: number; cell: Cell; effect: HiddenEffect; points: number }
+  | { type: 'bonusUsed'; team: number; effect: ChoiceEffect; target?: number; points?: number }
   | { type: 'quiz'; team: number; correct: boolean; timeout: boolean; points: number }
   | { type: 'trapsRemoved'; cell: Cell; count: number } | { type: 'effect'; team: number; effect: 'return' | 'bind' | 'confuse' }
   | { type: 'oasis'; team: number; rank: number; points: number };
@@ -44,6 +47,7 @@ export interface PublicView {
   serverNow: number; paused: boolean; mainRemainingMs: number; phaseRemainingMs: number | null;
   config: { durationMs: number; moveMs: number; quizMs: number; setupMs: number; autoNext: boolean; teamCount: number };
   teams: PublicTeam[]; events: PublicEvent[]; oasisArrivals: number; endReason: 'time' | 'manual' | null;
+  revealedSpots: { cell: Cell; effect: HiddenEffect }[];
   trapMap: FullTrap[] | null;              // 종료 후 교사가 '덫 지도 공개'를 눌렀을 때만
   reviewQuestions: RevealedQuestion[];     // 복습에서 교사가 공개한 문항만
   /** 종료 후 TV 에 띄울 것(교사 선택): 순위 / 덫 지도 / 공개한 문항 하나 */
@@ -62,6 +66,7 @@ export interface TeamView extends PublicView {
   me: {
     team: number; controller: boolean;
     traps: { id: number; cell: Cell; type: TrapType; active: boolean }[];
+    bonuses: ChoiceEffect[]; boostAvailable: boolean;
     sensor: number | null;
     reconAvailable: boolean;
     recon: null | { topLeft: Cell; cells: { cell: Cell; count: number; live: number }[] };
@@ -85,6 +90,8 @@ function publicEvent(e: RoundEvent): PublicEvent {
     case 'safe': return { type: 'safe', team: e.team, points: e.points };
     case 'zone': return { type: 'zone', team: e.team, zone: e.zone, points: e.points };
     case 'zonePenalty': return { type: 'zonePenalty', team: e.team, attacker: e.attacker, points: e.points };
+    case 'hidden': return { type: 'hidden', team: e.team, cell: e.cell, effect: e.effect, points: e.points };
+    case 'bonusUsed': return { type: 'bonusUsed', team: e.team, effect: e.effect, target: e.target, points: e.points };
     case 'quiz': return { type: 'quiz', team: e.team, correct: e.correct, timeout: e.timeout, points: e.points }; // 난이도는 비공개(6-1)
     case 'trapsRemoved': return { type: 'trapsRemoved', cell: e.cell, count: e.count };
     case 'effect': return { type: 'effect', team: e.team, effect: e.effect };
@@ -133,6 +140,7 @@ function publicView(s: RoomState, bank: readonly BankQuestion[], now: number): P
     serverNow: now, paused: s.clock.paused, mainRemainingMs: mainRemaining(s.clock, now), phaseRemainingMs: phaseRemaining(s.clock, now),
     config: { durationMs: s.config.durationMs, moveMs: s.config.moveMs, quizMs: s.config.quizMs, setupMs: s.config.setupMs, autoNext: s.config.autoNext, teamCount: count },
     teams, events: s.lastEvents.map(publicEvent), oasisArrivals: c?.oasisArrivals ?? 0, endReason: s.endReason,
+    revealedSpots: (c?.hiddenSpots ?? []).filter((spot) => spot.claimedBy !== null).map((spot) => ({ cell: spot.cell, effect: spot.effect })),
     trapMap: finished(s) && s.review.trapsRevealed ? fullTraps(s) : null,
     reviewQuestions: s.review.revealed.map((id) => bank.find((q) => q.id === id)).filter((q): q is BankQuestion => !!q).map(revealQ),
     reviewDisplay: finished(s) ? { mode: s.review.display, questionId: s.review.display === 'question' ? s.review.focus : null } : { mode: 'ranking', questionId: null }
@@ -178,7 +186,7 @@ export function teamView(s: RoomState, bank: readonly BankQuestion[], team: numb
   return {
     role: 'team', ...publicView(s, bank, now),
     me: {
-      team, controller: ctx.controller, traps, sensor,
+      team, controller: ctx.controller, traps, bonuses: [...(t?.bonusQueue ?? [])], boostAvailable: t?.boostAvailable ?? false, sensor,
       reconAvailable: t?.reconAvailable ?? false, recon,
       visited: t ? [...t.visited] : [], opponentZones: t ? [...t.opponentZones] : [],
       question: q ? { level: q.level, text: q.text, choices: [...q.choices] } : null,

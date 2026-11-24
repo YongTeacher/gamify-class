@@ -144,6 +144,8 @@ function eventText(v: TvView, e: PublicEvent): string | null {
     case 'zone': return `<li><span>${a(e.team)} 🏁 다른 출발 구역</span>${p(e.points)}</li>`;
     case 'zonePenalty': return `<li><span>${a(e.attacker)} 🚨 ${a(e.team)} 출발 구역 침입</span>${p(e.points)}</li>`;
     case 'effect': return `<li><span>${a(e.team)} ${{ return: '🌀 귀환!', bind: '⛓️ 속박!', confuse: '🌫️ 혼란!' }[e.effect]}</span><span></span></li>`;
+    case 'hidden': return `<li><span>${a(e.team)} ✨ 히든 스팟 발견!</span><span>${e.points ? p(e.points) : '보상 획득'}</span></li>`;
+    case 'bonusUsed': return `<li><span>${a(e.team)} ✨ 히든 보상 사용</span><span>${e.points ? p(e.points) : ''}</span></li>`;
     default: return null;
   }
 }
@@ -216,7 +218,7 @@ function tickClock() {
 function boardModel(v: TvView): BoardModel {
   // 이번 라운드에 움직인 동물은 반짝임으로 강조
   const moved = new Set(v.phase === 'RUNNING' && v.step !== 'MOVE_OPEN' ? v.events.filter((e) => e.type === 'move').map((e) => (e as { team: number }).team) : []);
-  return { animals: v.teams.map((t) => ({ team: t.team, emoji: t.animal.emoji, pos: t.pos, highlight: moved.has(t.team) })), zones: v.teams.map((t) => t.zone), trapMap: v.trapMap };
+  return { animals: v.teams.map((t) => ({ team: t.team, emoji: t.animal.emoji, pos: t.pos, highlight: moved.has(t.team) })), zones: v.teams.map((t) => t.zone), trapMap: v.trapMap, revealedSpots: v.revealedSpots };
 }
 
 // ── 시작 ────────────────────────────────────────────────────

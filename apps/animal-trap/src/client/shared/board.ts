@@ -35,6 +35,7 @@ export interface BoardModel {
   recon?: { cells: { cell: number; count: number; live: number }[]; topLeft: number } | null;
   reconPreview?: number | null;      // 3×3 좌상단
   trapMap?: { cell: number; owner: number; type: string; active: boolean }[] | null;
+  revealedSpots?: { cell: number; effect: string }[];
   sensor?: { cell: number; value: number | null } | null;
   /** 보이는 범위 (확대 시). 없으면 전체 */
   view?: { r0: number; c0: number; n: number };
@@ -117,6 +118,13 @@ export function draw(canvas: HTMLCanvasElement, m: BoardModel, t = performance.n
     const [x, y] = xy(tr.cell); g.globalAlpha = tr.active ? 0.95 : 0.35;
     g.fillStyle = TEAM_COLORS[tr.owner]; g.beginPath(); g.arc(x + cs * 0.3, y + cs * 0.3, cs * 0.16, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;
   }
+  // 발견된 히든 스팟만 표시한다. 미발견 위치는 서버 뷰에도 없다.
+  for (const spot of m.revealedSpots ?? []) if (visible(spot.cell)) {
+    const [x, y] = xy(spot.cell);
+    g.fillStyle = 'rgba(72,38,108,.52)'; g.beginPath(); g.roundRect(x + cs * .12, y + cs * .12, cs * .76, cs * .76, cs * .2); g.fill();
+    g.strokeStyle = '#fce688'; g.lineWidth = Math.max(1.5, cs * .055); g.stroke();
+    g.fillStyle = '#fff4bc'; g.font = `bold ${cs * .54}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('✦', x + cs / 2, y + cs / 2);
+  }
   // 자기 덫 (반짝임)
   for (const tr of m.myTraps ?? []) if (tr.active && visible(tr.cell)) {
     const [x, y] = xy(tr.cell);
@@ -125,7 +133,7 @@ export function draw(canvas: HTMLCanvasElement, m: BoardModel, t = performance.n
     g.font = `${cs * 0.55}px system-ui`; g.fillStyle = '#5a3d00'; g.fillText(TRAP_ICON[tr.type] ?? '🪤', x + cs / 2, y + cs / 2 + 1);
   }
   // 옮길 수 있는 칸
-  if (m.allowedCells && m.selectedTrap != null) for (const cell of m.allowedCells) if (visible(cell)) { const [x, y] = xy(cell); g.fillStyle = 'rgba(27,58,138,.10)'; g.fillRect(x + 1, y + 1, cs - 2, cs - 2); }
+  if (m.allowedCells) for (const cell of m.allowedCells) if (visible(cell)) { const [x, y] = xy(cell); g.fillStyle = 'rgba(27,58,138,.10)'; g.fillRect(x + 1, y + 1, cs - 2, cs - 2); }
   // 이동 후보
   for (const cell of m.candidates ?? []) if (visible(cell)) {
     const [x, y] = xy(cell); const chosen = m.pick === cell;

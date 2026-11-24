@@ -72,6 +72,72 @@ test('기존 8팀 판에 teamCount 설정이 없어도 계속 진행된다', () 
   assert.equal(sim.s.committed!.teams.length, 8);
 });
 
+test('히든 스팟은 12곳에 고르게 배치되고 출발 구역·오아시스·초기 덫을 피하며 발견 전에는 공개되지 않는다', () => {
+  const sim = new Sim({ teamCount: 4 }).start();
+  const spots = sim.s.committed!.hiddenSpots!;
+  assert.equal(spots.length, 12);
+  assert.equal(new Set(spots.map((x) => x.cell)).size, 12);
+  assert.deepEqual([...new Set(spots.map((x) => x.effect))].sort(), ['drain', 'gain', 'stride', 'swap', 'teleport', 'trap']);
+  for (const effect of ['drain', 'gain', 'stride', 'swap', 'teleport', 'trap']) assert.equal(spots.filter((x) => x.effect === effect).length, 2);
+  for (const spot of spots) {
+    assert.equal(zoneOf(spot.cell), -1);
+    assert.equal(isOasis(spot.cell), false);
+    assert.equal(sim.s.committed!.traps.some((trap) => trap.cell === spot.cell), false);
+  }
+  assert.deepEqual(teacherView(sim.s, bank, sim.now).revealedSpots, []);
+});
+
+test('히든 스팟 보상은 도착 후 한 번만 받고 점수·덫·순간이동에 서버 규칙이 적용된다', () => {
+  const sim = new Sim({ teamCount: 4 }).start();
+  const c = sim.s.committed!;
+  const destination = sim.safeNeighbor(0);
+  c.hiddenSpots = [{ cell: destination, effect: 'gain', claimedBy: null }];
+  sim.ok(team(0), { type: 'move', round: 1, to: destination });
+  sim.ok(T, { type: 'closePhase', target: { phase: 'RUNNING', step: 'MOVE_OPEN', round: 1 } });
+  assert.equal(sim.s.committed!.teams[0].score, 9, '안전 칸 +1과 히든 보상 +8');
+  assert.deepEqual(teacherView(sim.s, bank, sim.now).revealedSpots, [{ cell: destination, effect: 'gain' }]);
+  sim.next();
+  const back = c.teams[0].pos;
+  sim.ok(team(0), { type: 'move', round: 2, to: back });
+  sim.ok(T, { type: 'closePhase', target: { phase: 'RUNNING', step: 'MOVE_OPEN', round: 2 } });
+  assert.equal(sim.s.committed!.teams[0].score, 9, '발견한 스팟을 다시 밟아도 보상 없음');
+
+  sim.next();
+  const t = sim.s.committed!.teams[0];
+  t.bonusQueue = ['swap', 'drain', 'trap', 'teleport'];
+  t.score = 15; sim.s.committed!.teams[1].score = 4;
+  assert.deepEqual(sim.do(team(0), { type: 'swapScores', target: 0 }).result, { ok: false, error: 'BAD_TEAM' });
+  sim.ok(team(0), { type: 'swapScores', target: 1 });
+  assert.deepEqual([sim.s.committed!.teams[0].score, sim.s.committed!.teams[1].score], [4, 15]);
+  sim.ok(team(0), { type: 'drainScore', target: 1 });
+  assert.equal(sim.s.committed!.teams[1].score, 5);
+  const trapCell = [...Array(256).keys()].find((cell) => zoneOf(cell) === -1 && !isOasis(cell) && !sim.s.committed!.teams.some((team) => team.pos === cell) && !sim.s.committed!.traps.some((trap) => trap.cell === cell))!;
+  const before = sim.s.committed!.traps.length;
+  sim.ok(team(0), { type: 'placeTrap', to: trapCell });
+  assert.equal(sim.s.committed!.traps.length, before + 1);
+  assert.deepEqual(sim.do(team(0), { type: 'placeTrap', to: trapCell }).result, { ok: false, error: 'NO_BONUS' });
+  const remote = [...Array(256).keys()].find((cell) => Math.abs(Math.floor(cell / 16) - Math.floor(sim.pos(0) / 16)) > 3 && !sim.s.committed!.traps.some((trap) => trap.cell === cell))!;
+  assert.deepEqual(sim.do(team(0), { type: 'move', round: 3, to: remote }).result, { ok: false, error: 'BAD_MOVE' });
+  sim.ok(team(0), { type: 'teleport', round: 3, to: remote });
+  sim.ok(T, { type: 'closePhase', target: { phase: 'RUNNING', step: 'MOVE_OPEN', round: 3 } });
+  assert.equal(sim.pos(0), remote);
+  assert.equal(sim.s.committed!.teams[0].bonusQueue!.includes('teleport'), false);
+});
+
+test('최대 3칸 이동 보상은 실제 이동 뒤에만 소모된다', () => {
+  const sim = new Sim({ teamCount: 4 }).start();
+  const from = sim.pos(0);
+  const r = Math.floor(from / 16), c = from % 16;
+  const target = [...Array(256).keys()].find((cell) => Math.max(Math.abs(Math.floor(cell / 16) - r), Math.abs(cell % 16 - c)) === 3 && !sim.s.committed!.traps.some((trap) => trap.cell === cell) && !sim.s.committed!.hiddenSpots?.some((spot) => spot.cell === cell))!;
+  assert.deepEqual(sim.do(team(0), { type: 'move', round: 1, to: target }).result, { ok: false, error: 'BAD_MOVE' });
+  sim.s.committed!.teams[0].boostAvailable = true;
+  sim.ok(team(0), { type: 'move', round: 1, to: target });
+  assert.equal(sim.s.committed!.teams[0].boostAvailable, true, '확정 전에는 소모하지 않는다');
+  sim.ok(T, { type: 'closePhase', target: { phase: 'RUNNING', step: 'MOVE_OPEN', round: 1 } });
+  assert.equal(sim.pos(0), target);
+  assert.equal(sim.s.committed!.teams[0].boostAvailable, false);
+});
+
 test('새 판은 팀명과 동물을 분리하고, 동물 선점이 끝난 뒤에만 출발 자리를 추첨한다', () => {
   const count = 4;
   const roomCreds = { ...creds, pins: creds.pins.slice(0, count), pinGen: creds.pinGen.slice(0, count), controlToken: creds.controlToken.slice(0, count), controlGen: creds.controlGen.slice(0, count), pinFails: creds.pinFails.slice(0, count) };

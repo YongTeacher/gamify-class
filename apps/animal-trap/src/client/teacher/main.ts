@@ -219,7 +219,7 @@ function tickClock() {
 
 function boardModel(v: TeacherView): BoardModel {
   return { animals: v.teams.map((t) => ({ team: t.team, emoji: t.animal.emoji, pos: t.pos })), zones: v.teams.map((t) => t.zone),
-    trapMap: v.final ? v.final.traps : null };
+    trapMap: v.final ? v.final.traps : null, revealedSpots: v.revealedSpots };
 }
 
 const studentUrl = (team: number) => `${location.origin}/#${game.code}-${team}`;
@@ -305,6 +305,8 @@ function roundSummary(v: TeacherView): string {
     if (e.type === 'zone') return [`${name(e.team)} 다른 출발 구역 +${e.points}`];
     if (e.type === 'zonePenalty') return [`${name(e.attacker)} 침입 → ${name(e.team)} ${e.points}`];
     if (e.type === 'effect') return [`${name(e.team)} ${{ return: '귀환', bind: '속박', confuse: '혼란' }[e.effect]}`];
+    if (e.type === 'hidden') return [`${name(e.team)} 히든 스팟 발견`];
+    if (e.type === 'bonusUsed') return [`${name(e.team)} 히든 보상 사용`];
     return [];
   });
   return parts.length ? '이번 라운드: ' + parts.join(' · ') : '이번 라운드는 문제·특수 사건이 없었어요.';

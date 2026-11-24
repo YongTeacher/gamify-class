@@ -95,7 +95,8 @@ const PUBLIC = ['code', 'title', 'phase', 'step', 'round', 'stateVersion', 'serv
   'teams[].status.joined', 'teams[].status.setupConfirmed', 'teams[].status.moved', 'teams[].status.quiz', 'teams[].status.boundLeft', 'teams[].status.confusedLeft',
   'teams[].summary', 'teams[].summary.correct', 'teams[].summary.wrong', 'teams[].summary.zones', 'teams[].summary.oasisRank',
   'events[]', 'events[].type', 'events[].team', 'events[].attacker', 'events[].from', 'events[].to', 'events[].reason', 'events[].points', 'events[].zone', 'events[].correct', 'events[].timeout',
-  'events[].cell', 'events[].count', 'events[].effect', 'events[].rank', 'oasisArrivals', 'endReason',
+  'events[].cell', 'events[].count', 'events[].effect', 'events[].rank', 'events[].target', 'oasisArrivals', 'endReason',
+  'revealedSpots[]', 'revealedSpots[].cell', 'revealedSpots[].effect',
   'trapMap', 'trapMap[]', 'trapMap[].cell', 'trapMap[].owner', 'trapMap[].type', 'trapMap[].active',
   'reviewDisplay.mode', 'reviewDisplay.questionId', 'reviewQuestions[]', 'reviewQuestions[].id', 'reviewQuestions[].level', 'reviewQuestions[].text', 'reviewQuestions[].choices[]', 'reviewQuestions[].answer', 'reviewQuestions[].explanation'];
 const ALLOWED = {
@@ -105,7 +106,7 @@ const ALLOWED = {
     'final.questions[]', 'final.questions[].id', 'final.questions[].level', 'final.questions[].text', 'final.questions[].choices[]', 'final.questions[].answer', 'final.questions[].explanation',
     'final.quizLog[]', 'final.quizLog[].round', 'final.quizLog[].team', 'final.quizLog[].questionId', 'final.quizLog[].level', 'final.quizLog[].correct', 'final.quizLog[].timeout',
     'final.cancelled[]', 'final.cancelled[].round', 'final.cancelled[].team', 'final.cancelled[].questionId']),
-  team: new Set(['role', ...PUBLIC, 'me.team', 'me.controller', 'me.traps[]', 'me.traps[].id', 'me.traps[].cell', 'me.traps[].type', 'me.traps[].active', 'me.sensor',
+  team: new Set(['role', ...PUBLIC, 'me.team', 'me.controller', 'me.traps[]', 'me.traps[].id', 'me.traps[].cell', 'me.traps[].type', 'me.traps[].active', 'me.sensor', 'me.bonuses[]', 'me.boostAvailable',
     'me.reconAvailable', 'me.recon', 'me.recon.topLeft', 'me.recon.cells[]', 'me.recon.cells[].cell', 'me.recon.cells[].count', 'me.recon.cells[].live',
     'me.visited[]', 'me.opponentZones[]', 'me.question', 'me.question.level', 'me.question.text', 'me.question.choices[]', 'me.answer', 'me.answer.choice', 'me.answer.correct'])
 };

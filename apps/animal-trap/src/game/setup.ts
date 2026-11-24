@@ -25,7 +25,7 @@ export const drawZones = (rng: Rng, count = TEAMS): number[] => shuffle(rng, [..
 export function newTeam(zone: number): TeamState {
   const spawn = SPAWN_CELL[zone];
   return { zone, spawn, pos: spawn, score: 0, visited: [spawn], opponentZones: [], oasisRound: null, oasisRank: null,
-    reconAvailable: false, recon: null, bindRounds: [], confuseRounds: [], asked: [] };
+    reconAvailable: false, recon: null, bindRounds: [], confuseRounds: [], asked: [], bonusQueue: [], boostAvailable: false };
 }
 
 /** 팀마다 가능한 칸에서 균등 무작위 배치. 참여 팀 수에 따라 일반 덫 수 조정. */

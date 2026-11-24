@@ -104,7 +104,7 @@ let creds: Creds;
 let view: TeamView | null = null;
 let clock: Countdown | null = null;
 let canvas: HTMLCanvasElement | null = null;
-const ui = { selectedTrap: null as number | null, pick: null as number | null, zoom: false, focus: null as number | null, reconMode: false, reconTL: null as number | null, busy: false };
+const ui = { selectedTrap: null as number | null, pick: null as number | null, zoom: false, focus: null as number | null, reconMode: false, reconTL: null as number | null, bonusMode: null as 'teleport' | 'trap' | null, bonusCell: null as number | null, busy: false };
 let resetKey = '';
 let dirty = true;
 let sessionNo = 0; // 세션이 바뀌면 이전 세션의 늦은 응답은 무시한다
@@ -121,7 +121,7 @@ async function send(cmd: Record<string, unknown>): Promise<unknown | null> {
   return r.data ?? true;
 }
 
-function resetUiAll() { Object.assign(ui, { selectedTrap: null, pick: null, zoom: false, focus: null, reconMode: false, reconTL: null, busy: false }); resetKey = ''; }
+function resetUiAll() { Object.assign(ui, { selectedTrap: null, pick: null, zoom: false, focus: null, reconMode: false, reconTL: null, bonusMode: null, bonusCell: null, busy: false }); resetKey = ''; }
 
 function start(c: Creds) {
   endSession();
@@ -143,7 +143,7 @@ function start(c: Creds) {
     onState: (v) => {
       view = v; clock = Countdown.of(v);
       const key = [v.phase, v.round, v.step, v.me.controller, v.paused].join('|');
-      if (key !== resetKey) { resetKey = key; ui.selectedTrap = null; ui.pick = null; if (!reconOpen(v)) ui.reconMode = false; }
+      if (key !== resetKey) { resetKey = key; ui.selectedTrap = null; ui.pick = null; ui.bonusMode = null; ui.bonusCell = null; if (!reconOpen(v)) ui.reconMode = false; }
       render();
     },
     onStatus: (up) => { $('#banners').innerHTML = (up ? '' : '<div class="banner off" role="alert">연결이 끊겼어요. 다시 연결하는 중…</div>') + viewerBanner(); },
@@ -195,7 +195,7 @@ const coord = (cell: number) => `세로 ${rowOf(cell) + 1}·가로 ${colOf(cell)
 
 function allowedTrapCells(v: TeamView): Set<number> {
   const own = ownCells(v);
-  return new Set([...Array(256).keys()].filter((c) => !OASIS.includes(c) && zoneOf(c) === -1 && !own.has(c)));
+  return new Set([...Array(256).keys()].filter((c) => !OASIS.includes(c) && zoneOf(c) === -1 && !own.has(c) && !v.teams.some((team) => team.pos === c)));
 }
 
 function zoomWindow(v: TeamView): BoardModel['view'] | undefined {
@@ -211,12 +211,17 @@ function boardModel(v: TeamView): BoardModel {
   const m: BoardModel = {
     animals: v.teams.map((t) => ({ team: t.team, emoji: t.animal.emoji, pos: t.pos, highlight: t.team === v.me.team })),
     zones: v.teams.map((t) => t.zone), myTeam: v.me.team, myTraps: v.me.traps, selectedTrap: ui.selectedTrap,
-    visited: v.me.visited, recon: v.me.recon, trapMap: v.trapMap,
+    visited: v.me.visited, recon: v.me.recon, trapMap: v.trapMap, revealedSpots: v.revealedSpots,
     sensor: v.phase === 'RUNNING' && pos !== null ? { cell: pos, value: v.me.sensor } : null,
     view: zoomWindow(v)
   };
   if (setupOpen(v) && ui.selectedTrap !== null) m.allowedCells = allowedTrapCells(v);
-  if (canMove(v) && pos !== null) { m.candidates = neighbors(pos); m.pick = ui.pick; }
+  if (ui.bonusMode === 'trap') { m.allowedCells = allowedTrapCells(v); m.candidates = ui.bonusCell === null ? [] : [ui.bonusCell]; m.pick = ui.bonusCell; }
+  else if (ui.bonusMode === 'teleport') { m.candidates = ui.bonusCell === null ? [] : [ui.bonusCell]; m.pick = ui.bonusCell; }
+  else if (canMove(v) && pos !== null) {
+    m.candidates = v.me.boostAvailable ? [...Array(256).keys()].filter((cell) => cell !== pos && Math.max(Math.abs(rowOf(cell) - rowOf(pos)), Math.abs(colOf(cell) - colOf(pos))) <= 3) : neighbors(pos);
+    m.pick = ui.pick;
+  }
   if (ui.reconMode) m.reconPreview = ui.reconTL;
   return m;
 }
@@ -227,6 +232,11 @@ async function onBoardClick(e: MouseEvent) {
   const cell = cellAt(canvas, e, model.view);
   if (cell === null) return;
   if (ui.reconMode) { ui.reconTL = Math.max(0, Math.min(13, rowOf(cell) - 1)) * 16 + Math.max(0, Math.min(13, colOf(cell) - 1)); render(); return; }
+  if (ui.bonusMode) {
+    if (ui.bonusMode === 'trap' && !allowedTrapCells(v).has(cell)) return toast('출발 구역·오아시스·우리 덫이 있는 칸에는 설치할 수 없어요.');
+    if (ui.bonusMode === 'teleport' && cell === myPos(v)) return toast('현재 칸과 다른 칸을 골라 주세요.');
+    ui.bonusCell = cell; render(); return;
+  }
   if (setupOpen(v)) {
     const hit = v.me.traps.find((t) => t.cell === cell);
     if (hit) await pickTrap(hit.id);
@@ -292,6 +302,8 @@ function eventLine(e: PublicEvent): string | null {
     case 'quiz': return `<li>${e.correct ? '🎉 정답! 덫을 모두 없앴어요' : e.timeout ? '⏰ 시간 초과(오답)' : '😵 오답 · 덫이 남았어요'}${pts(e.points)}</li>`;
     case 'effect': return `<li>${{ return: '🌀 귀환 덫! 출발 칸으로 돌아갔어요', bind: '⛓️ 속박 덫! 다음 2라운드 이동 불가', confuse: '🌫️ 혼란 덫! 다음 2라운드 센서가 숨겨져요' }[e.effect]}</li>`;
     case 'oasis': return `<li>🌴 오아시스 ${e.rank}등 도착! 정찰권을 얻었어요${pts(e.points)}</li>`;
+    case 'hidden': return `<li>✨ 히든 스팟 발견! ${hiddenName(e.effect)}${e.points ? pts(e.points) : ' 사용권 획득'}</li>`;
+    case 'bonusUsed': return `<li>✨ ${hiddenName(e.effect)} 사용${e.target === undefined ? '' : ' → ' + esc(view?.teams[e.target]?.teamName ?? '')}${e.points ? pts(e.points) : ''}</li>`;
     case 'stay': return `<li>${e.reason === 'bound' ? '⛓️ 속박되어 제자리' : '⏳ 이동을 정하지 않아 제자리'}</li>`;
     default: return null;
   }
@@ -308,6 +320,22 @@ function movePad(v: TeamView): string {
 }
 
 const disabledUnlessActive = (v: TeamView) => (canAct(v) ? '' : 'disabled');
+const hiddenName = (effect: string) => ({ swap: '점수 교환', drain: '상대 점수 −10', gain: '우리 팀 +8', teleport: '원하는 칸으로 이동', stride: '다음 이동 최대 3칸', trap: '덫 1개 추가' } as Record<string, string>)[effect] ?? effect;
+
+function bonusPanel(v: TeamView): string {
+  if (!v.me.bonuses.length && !v.me.boostAvailable) return '';
+  const targets = v.teams.filter((team) => team.team !== v.me.team).map((team) => `<option value="${team.team}">${esc(team.teamName)} · ${team.score}점</option>`).join('');
+  const has = (effect: string) => v.me.bonuses.includes(effect as TeamView['me']['bonuses'][number]);
+  const rows = [
+    has('swap') ? `<div class="row"><span>🔁 점수 교환</span><select id="swapTarget" aria-label="교환할 상대팀">${targets}</select><button class="small" id="swapGo" ${disabledUnlessActive(v)}>사용</button></div>` : '',
+    has('drain') ? `<div class="row"><span>⚡ 상대팀 −10점</span><select id="drainTarget" aria-label="감점할 상대팀">${targets}</select><button class="small" id="drainGo" ${disabledUnlessActive(v)}>사용</button></div>` : '',
+    has('trap') ? `<button class="btn ghost" id="trapBonus" ${disabledUnlessActive(v)}>🪤 덫 1개 추가 설치${ui.bonusMode === 'trap' ? ' · 칸 선택 중' : ''}</button>` : '',
+    has('teleport') ? `<button class="btn ghost" id="teleportBonus" ${canMove(v) ? '' : 'disabled'}>🌀 원하는 칸으로 이동${ui.bonusMode === 'teleport' ? ' · 칸 선택 중' : ''}</button>` : '',
+    v.me.boostAvailable ? '<p class="muted">👣 다음 이동은 최대 3칸까지 가능합니다. 이동하면 사용됩니다.</p>' : ''
+  ].filter(Boolean).join('');
+  const picker = ui.bonusMode ? `<p class="muted">게임판에서 칸을 누르거나 좌표를 고르세요. 선택: ${ui.bonusCell === null ? '없음' : coord(ui.bonusCell)}</p>${cellPicker('bonusAt', '히든 보상 사용할 칸', 16, ui.bonusCell, v)}<button class="btn" id="bonusGo" ${ui.bonusCell === null || !canAct(v) ? 'disabled' : ''}>${ui.bonusMode === 'trap' ? '이 칸에 덫 설치' : '이 칸으로 순간이동'}</button><button class="btn ghost" id="bonusCancel">취소</button>` : '';
+  return `<div class="card"><h2>✨ 히든 스팟 보상</h2>${rows}${picker}</div>`;
+}
 
 /** 키보드·스크린리더용 칸 지정: 세로·가로 번호를 골라 '적용' (보드를 누르는 것과 같은 일) */
 function cellPicker(id: string, label: string, max: number, preset: number | null, v: TeamView): string {
@@ -346,10 +374,10 @@ function panel(v: TeamView): string {
     const recon = reconOpen(v) ? `<button class="btn ghost" id="recon" ${disabledUnlessActive(v)}>🔭 정찰권 쓰기 (3×3 덫 위치 보기)</button>` : '';
     if (v.step === 'MOVE_OPEN') {
       if (ui.reconMode) return reconPanel(v);
-      if (me.status.boundLeft) return sensorCard(v) + `<div class="card"><h2>⛓️ 속박 중</h2><p class="muted" style="margin:0">이번 라운드는 제자리에 있어요.</p></div>` + recon;
-      if (me.status.moved) return sensorCard(v) + `<div class="card"><h2>👣 이동 확정</h2><p class="muted" style="margin:0">다른 팀을 기다리는 중이에요.</p></div>` + recon;
-      return sensorCard(v) + `<div class="card"><h2>어디로 갈까요?</h2><p class="muted" style="margin:0 0 10px">반짝이는 8칸 중 하나를 누르거나 아래 방향을 고른 뒤 <b>‘이 칸으로 이동하기’</b>를 눌러요. 시간 안에 안 누르면 제자리예요.</p>${v.me.controller ? movePad(v) : ''}</div>
-        ${v.me.controller ? `<button class="btn" id="move" ${ui.pick === null || !canMove(v) ? 'disabled' : ''}>${ui.pick === null ? '칸을 먼저 고르세요' : '이 칸으로 이동하기 (' + coord(ui.pick) + ')'}</button>` : ''}${recon}`;
+      if (me.status.boundLeft) return sensorCard(v) + `<div class="card"><h2>⛓️ 속박 중</h2><p class="muted" style="margin:0">이번 라운드는 제자리에 있어요.</p></div>` + bonusPanel(v) + recon;
+      if (me.status.moved) return sensorCard(v) + `<div class="card"><h2>👣 이동 확정</h2><p class="muted" style="margin:0">다른 팀을 기다리는 중이에요.</p></div>` + bonusPanel(v) + recon;
+      return sensorCard(v) + `<div class="card"><h2>어디로 갈까요?</h2><p class="muted" style="margin:0 0 10px">${v.me.boostAvailable ? '반짝이는 3칸 이내에서 목적지를 고르세요.' : '반짝이는 8칸 중 하나를 고르세요.'} 시간 안에 안 누르면 제자리예요.</p>${v.me.controller ? movePad(v) : ''}</div>
+        ${v.me.controller ? `<button class="btn" id="move" ${ui.pick === null || !canMove(v) ? 'disabled' : ''}>${ui.pick === null ? '칸을 먼저 고르세요' : '이 칸으로 이동하기 (' + coord(ui.pick) + ')'}</button>` : ''}${bonusPanel(v)}${recon}`;
     }
     if (v.step === 'QUESTION_OPEN') {
       const q = v.me.question;
@@ -365,7 +393,7 @@ function panel(v: TeamView): string {
     if (v.step === 'ROUND_SUMMARY') {
       if (ui.reconMode) return reconPanel(v);
       const mine = v.events.map((e) => ('team' in e && e.team === v.me.team ? eventLine(e) : null)).filter(Boolean);
-      return `<div class="card"><h2>${v.round}라운드 결과</h2><ul class="events">${mine.length ? mine.join('') : '<li>이번 라운드는 점수 변화가 없어요</li>'}</ul></div>` + sensorCard(v) + recon;
+      return `<div class="card"><h2>${v.round}라운드 결과</h2><ul class="events">${mine.length ? mine.join('') : '<li>이번 라운드는 점수 변화가 없어요</li>'}</ul></div>` + bonusPanel(v) + sensorCard(v) + recon;
     }
   }
   if (v.phase === 'FINISHED' || v.phase === 'REVIEW') {
@@ -417,6 +445,19 @@ function bindPanel(v: TeamView) {
     await send({ type: 'trapMove', trapId: id, to }); render();
   });
   on('reconAtGo', () => { ui.reconTL = picked('reconAt'); render(); });
+  on('swapGo', async () => { if (view) await send({ type: 'swapScores', target: Number((document.getElementById('swapTarget') as HTMLSelectElement).value) }); });
+  on('drainGo', async () => { if (view) await send({ type: 'drainScore', target: Number((document.getElementById('drainTarget') as HTMLSelectElement).value) }); });
+  on('trapBonus', () => { ui.bonusMode = 'trap'; ui.bonusCell = null; render(); });
+  on('teleportBonus', () => { ui.bonusMode = 'teleport'; ui.bonusCell = null; render(); });
+  on('bonusCancel', () => { ui.bonusMode = null; ui.bonusCell = null; render(); });
+  on('bonusAtGo', () => { ui.bonusCell = picked('bonusAt'); render(); });
+  on('bonusGo', async () => {
+    if (!view || ui.bonusCell === null || !ui.bonusMode) return;
+    const mode = ui.bonusMode, to = ui.bonusCell;
+    if (mode === 'trap' && !allowedTrapCells(view).has(to)) return toast('그 칸에는 덫을 놓을 수 없어요.');
+    if (mode === 'teleport' && (!canMove(view) || to === myPos(view))) return toast('순간이동할 수 없는 칸이에요.');
+    if (await send(mode === 'trap' ? { type: 'placeTrap', to } : { type: 'teleport', round: view.round, to })) { ui.bonusMode = null; ui.bonusCell = null; render(); }
+  });
   document.querySelectorAll<HTMLButtonElement>('[data-dir]').forEach((b) => (b.onclick = () => { if (b.dataset.dir) { ui.pick = Number(b.dataset.dir); render(); } }));
   document.querySelectorAll<HTMLButtonElement>('[data-trap]').forEach((b) => (b.onclick = () => void pickTrap(Number(b.dataset.trap))));
   document.querySelectorAll<HTMLButtonElement>('[data-pan]').forEach((b) => (b.onclick = () => {

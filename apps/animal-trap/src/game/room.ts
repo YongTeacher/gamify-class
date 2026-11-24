@@ -11,12 +11,13 @@
  * ⚠️ 인증(교사 열쇠·팀 PIN·조작권)은 3단계 게이트웨이가 확인하고 actor 로 넘긴다. 여기서는 actor 를 믿는다.
  */
 import type { Cell } from './board.ts';
-import { TEAMS } from './board.ts';
+import { TEAMS, isCell } from './board.ts';
 import { elapsed, mainEndsAt, mainRemaining, newClock, pause, resume, setPhase, startMain, stopMain, type Clock } from './clock.ts';
 import { LEVELS, pickQuestion, type BankQuestion } from './questions.ts';
 import { makeRng } from './rng.ts';
+import { HIDDEN_DRAIN, placeHiddenSpots } from './hidden.ts';
 import { applyRecon, isBound, land, resolve, validMove } from './rules.ts';
-import { autoPlace, drawZones, moveTrap, newGame, swapTraps, validPlacement } from './setup.ts';
+import { autoPlace, canPlace, drawZones, moveTrap, newGame, swapTraps, validPlacement } from './setup.ts';
 import type { Committed, Pending, RoundEvent, Trap } from './types.ts';
 
 export type RoomPhase = 'LOBBY' | 'DRAWN' | 'TRAP_SETUP' | 'READY' | 'RUNNING' | 'FINISHED' | 'REVIEW';
@@ -60,6 +61,7 @@ export interface RoomState {
   committed: Committed | null;
   pending: Pending | null;
   moves: (Cell | null)[];
+  teleportMoves?: boolean[];          // 기존 판에는 없음
   answers: (number | null)[];          // 문항별 첫 답(1~4), 이후 불변
   clock: Clock;
   finishAfterRound: boolean;
@@ -85,6 +87,8 @@ export type Command =
   | { type: 'trapMove'; trapId: number; to: Cell } | { type: 'trapSwap'; a: number; b: number } | { type: 'trapConfirm' }
   /** 이동·답안은 대상 라운드에 묶인다 — 지난 라운드의 늦은 재전송이 다음 라운드에 적용되지 않게 */
   | { type: 'move'; round: number; to: Cell } | { type: 'answer'; round: number; choice: number } | { type: 'recon'; topLeft: Cell }
+  | { type: 'teleport'; round: number; to: Cell }
+  | { type: 'swapScores'; target: number } | { type: 'drainScore'; target: number } | { type: 'placeTrap'; to: Cell }
   | { type: 'tick' };
 export type Target = { phase: 'TRAP_SETUP' } | { phase: 'RUNNING'; step: 'MOVE_OPEN' | 'QUESTION_OPEN'; round: number };
 export type CommandIn = Command & { requestId?: string };
@@ -135,7 +139,7 @@ export function createRoom(input: { code: string; title: string; setName: string
     teamNames: teamNames.map((name) => name.trim()),
     animalByTeam: input.teamNames ? Array(count).fill(null) : Array.from({ length: count }, (_, i) => i),
     zones: null, setupTraps: null, confirmed: Array(count).fill(false), committed: null, pending: null,
-    moves: Array(count).fill(null), answers: Array(count).fill(null), clock: newClock(input.config.durationMs),
+    moves: Array(count).fill(null), teleportMoves: Array(count).fill(false), answers: Array(count).fill(null), clock: newClock(input.config.durationMs),
     finishAfterRound: false, endReason: null, lastEvents: [], eventSeq: 0, cancelled: [], processed: {}, creds: input.creds,
     review: { revealed: [], trapsRevealed: false, display: 'ranking', focus: null }
   };
@@ -156,6 +160,7 @@ function finishSetup(c: Ctx) {
 function openMove(c: Ctx) {
   c.s.step = 'MOVE_OPEN';
   c.s.moves = Array(c.s.creds.pins.length).fill(null);
+  c.s.teleportMoves = Array(c.s.creds.pins.length).fill(false);
   c.s.answers = Array(c.s.creds.pins.length).fill(null);
   c.s.clock = setPhase(c.s.clock, c.now, c.s.config.moveMs);
   if (!movableTeams(c.s).length) lockMoves(c); // 전원 속박이면 기다릴 이유가 없다
@@ -168,6 +173,7 @@ function finish(c: Ctx, reason: 'time' | 'manual') {
     s.pending = null; // 진행 중 라운드 전체 폐기 (D5): 확정 상태는 land 가 건드리지 않았으므로 복원할 것이 없다
   }
   s.moves = Array(s.creds.pins.length).fill(null);
+  s.teleportMoves = Array(s.creds.pins.length).fill(false);
   s.answers = Array(s.creds.pins.length).fill(null);
   if (s.phase === 'RUNNING') s.clock = stopMain(s.clock, c.now);
   s.clock = setPhase({ ...s.clock, paused: false, phaseRemainingMs: null }, c.now, null);
@@ -195,7 +201,7 @@ function lockMoves(c: Ctx) {
   const s = c.s;
   if (!s.committed) return;
   const rng = makeRng(s.rngState);
-  s.pending = land(s.committed, s.moves, (_team, level, asked) => pickQuestion(c.bank, level, asked, rng));
+  s.pending = land(s.committed, s.moves, (_team, level, asked) => pickQuestion(c.bank, level, asked, rng), s.teleportMoves ?? []);
   s.rngState = rng.state();
   s.answers = Array(s.creds.pins.length).fill(null);
   if (s.pending.landings.some((l) => l.questionId !== null)) { s.step = 'QUESTION_OPEN'; s.clock = setPhase(s.clock, c.now, s.config.quizMs); }
@@ -262,6 +268,7 @@ function apply(c: Ctx, actor: Actor, cmd: Command): CmdResult {
         if (s.phase !== 'READY' || !s.zones || !s.setupTraps) return fail('BAD_PHASE');
         if (!validPlacement(s.setupTraps, s.zones)) return fail('BAD_PLACEMENT');
         s.committed = newGame(() => 0, s.zones, s.setupTraps);
+        { const rng = makeRng(s.rngState); s.committed.hiddenSpots = placeHiddenSpots(rng, s.setupTraps); s.rngState = rng.state(); }
         s.phase = 'RUNNING'; s.clock = startMain(s.clock, c.now); openMove(c); return OK;
       case 'next':
         if (s.phase !== 'RUNNING' || s.step !== 'ROUND_SUMMARY' || s.committed?.round !== cmd.round) return fail('STALE');
@@ -342,8 +349,48 @@ function apply(c: Ctx, actor: Actor, cmd: Command): CmdResult {
       if (s.moves[team] !== null) return fail('ALREADY_MOVED');
       if (!validMove(s.committed, team, cmd.to)) return fail('BAD_MOVE');
       s.moves[team] = cmd.to;
+      (s.teleportMoves ??= Array(s.creds.pins.length).fill(false))[team] = false;
       if (movableTeams(s).every((t) => s.moves[t] !== null)) lockMoves(c); // 전원 제출 → 바로 마감
       return OK;
+    case 'teleport':
+      if (s.phase !== 'RUNNING' || s.step !== 'MOVE_OPEN' || !s.committed) return fail('BAD_PHASE');
+      if (cmd.round !== round(s)) return fail('STALE');
+      if (s.moves[team] !== null) return fail('ALREADY_MOVED');
+      if (!validMove(s.committed, team, cmd.to, true)) return fail('NO_BONUS');
+      s.moves[team] = cmd.to;
+      (s.teleportMoves ??= Array(s.creds.pins.length).fill(false))[team] = true;
+      if (movableTeams(s).every((t) => s.moves[t] !== null)) lockMoves(c);
+      return OK;
+    case 'swapScores': case 'drainScore': case 'placeTrap': {
+      if (s.phase !== 'RUNNING' || (s.step !== 'MOVE_OPEN' && s.step !== 'ROUND_SUMMARY') || !s.committed) return fail('BAD_PHASE');
+      const effect = cmd.type === 'swapScores' ? 'swap' : cmd.type === 'drainScore' ? 'drain' : 'trap';
+      const own = s.committed.teams[team];
+      const queue = own.bonusQueue ?? [];
+      const index = queue.indexOf(effect);
+      if (index < 0) return fail('NO_BONUS');
+      let event: RoundEvent;
+      if (cmd.type === 'placeTrap') {
+        if (!isCell(cmd.to) || !canPlace(own.zone, cmd.to) || s.committed.traps.some((trap) => trap.active && trap.owner === team && trap.cell === cmd.to) || s.committed.teams.some((t) => t.pos === cmd.to)) return fail('BAD_CELL');
+        const id = Math.max(-1, ...s.committed.traps.map((trap) => trap.id)) + 1;
+        s.committed.traps.push({ id, owner: team, cell: cmd.to, type: 'normal', active: true });
+        event = { type: 'bonusUsed', team, effect: 'trap' };
+      } else {
+        if (!Number.isInteger(cmd.target) || cmd.target < 0 || cmd.target >= s.creds.pins.length || cmd.target === team) return fail('BAD_TEAM');
+        const other = s.committed.teams[cmd.target];
+        if (cmd.type === 'swapScores') {
+          [own.score, other.score] = [other.score, own.score];
+          event = { type: 'bonusUsed', team, effect: 'swap', target: cmd.target };
+        } else {
+          other.score += HIDDEN_DRAIN;
+          event = { type: 'bonusUsed', team, effect: 'drain', target: cmd.target, points: HIDDEN_DRAIN };
+        }
+      }
+      own.bonusQueue = queue.filter((_, i) => i !== index);
+      s.lastEvents = [...s.lastEvents, event];
+      s.eventSeq++;
+      c.events.push({ seq: s.eventSeq, round: s.committed.round, events: [event] });
+      return OK;
+    }
     case 'answer': {
       if (s.phase !== 'RUNNING' || s.step !== 'QUESTION_OPEN' || !s.pending) return fail('BAD_PHASE');
       if (cmd.round !== s.pending.round) return fail('STALE');

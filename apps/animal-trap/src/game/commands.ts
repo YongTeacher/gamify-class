@@ -43,6 +43,9 @@ export function parseTeamCommand(raw: unknown): Command | null {
     case 'trapSwap': return int(c.a, 0, 10_000) && int(c.b, 0, 10_000) ? { type: 'trapSwap', a: c.a, b: c.b } : null;
     case 'trapConfirm': return { type: 'trapConfirm' };
     case 'move': return roundNo(c.round) && isCell(c.to) ? { type: 'move', round: c.round, to: c.to } : null;
+    case 'teleport': return roundNo(c.round) && isCell(c.to) ? { type: 'teleport', round: c.round, to: c.to } : null;
+    case 'swapScores': case 'drainScore': return team(c.target) ? { type: c.type, target: c.target } : null;
+    case 'placeTrap': return isCell(c.to) ? { type: 'placeTrap', to: c.to } : null;
     case 'answer': return roundNo(c.round) && int(c.choice, 1, 4) ? { type: 'answer', round: c.round, choice: c.choice } : null;
     case 'recon': return isCell(c.topLeft) ? { type: 'recon', topLeft: c.topLeft } : null;
   }
