@@ -5,6 +5,9 @@
 Cloudflare Worker `animal-trap` + Durable Object(판 하나 = 인스턴스 하나) + D1(문제은행·판 목록).
 계정 **bsy0708@korea.kr**. 운영 주소: `https://animal-trap.bsy0708.workers.dev`.
 
+4~8팀 판의 팀당 덫은 각각 26·21·18·15·13개(전체 약 104개)입니다. 상대 팀의 출발 구역에
+처음 들어가면 공격팀 +10점, 그 구역 주인 −5점이 적용됩니다. 빈 출발 구역은 안전 칸입니다.
+
 ## 개발
 
 ```sh

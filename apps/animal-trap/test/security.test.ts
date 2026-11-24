@@ -94,7 +94,7 @@ const PUBLIC = ['code', 'title', 'phase', 'step', 'round', 'stateVersion', 'serv
   'teams[]', 'teams[].team', 'teams[].teamName', 'teams[].animalId', 'teams[].animal.code', 'teams[].animal.name', 'teams[].animal.emoji', 'teams[].zone', 'teams[].pos', 'teams[].score', 'teams[].rank', 'teams[].oasisRank',
   'teams[].status.joined', 'teams[].status.setupConfirmed', 'teams[].status.moved', 'teams[].status.quiz', 'teams[].status.boundLeft', 'teams[].status.confusedLeft',
   'teams[].summary', 'teams[].summary.correct', 'teams[].summary.wrong', 'teams[].summary.zones', 'teams[].summary.oasisRank',
-  'events[]', 'events[].type', 'events[].team', 'events[].from', 'events[].to', 'events[].reason', 'events[].points', 'events[].zone', 'events[].correct', 'events[].timeout',
+  'events[]', 'events[].type', 'events[].team', 'events[].attacker', 'events[].from', 'events[].to', 'events[].reason', 'events[].points', 'events[].zone', 'events[].correct', 'events[].timeout',
   'events[].cell', 'events[].count', 'events[].effect', 'events[].rank', 'oasisArrivals', 'endReason',
   'trapMap', 'trapMap[]', 'trapMap[].cell', 'trapMap[].owner', 'trapMap[].type', 'trapMap[].active',
   'reviewDisplay.mode', 'reviewDisplay.questionId', 'reviewQuestions[]', 'reviewQuestions[].id', 'reviewQuestions[].level', 'reviewQuestions[].text', 'reviewQuestions[].choices[]', 'reviewQuestions[].answer', 'reviewQuestions[].explanation'];

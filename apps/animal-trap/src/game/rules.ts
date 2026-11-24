@@ -15,6 +15,7 @@ import type { Committed, Landing, Level, Pending, Phase, ReconResult, RoundEvent
 
 export const SAFE_BONUS = 1;
 export const ZONE_BONUS = 10;
+export const ZONE_PENALTY = -5;
 export const OASIS_POINTS = (rank: number): number => (rank === 1 ? 30 : rank === 2 ? 20 : 15);
 export const correctPoints = (n: number): number => n + 2;
 export const wrongPoints = (n: number): number => -(n + 1);
@@ -55,7 +56,7 @@ export function land(committed: Committed, moves: readonly (Cell | null | undefi
     if (isOasis(dest)) {
       landing.kind = 'oasis';
       landing.oasisNew = t.oasisRound === null;
-    } else if (zone !== -1 && zone !== t.zone) {
+    } else if (zone !== -1 && zone !== t.zone && committed.teams.some((other) => other.zone === zone)) {
       landing.kind = 'zone';
       if (!t.opponentZones.includes(zone)) { landing.bonus = ZONE_BONUS; landing.zoneBonus = zone; }
     } else {
@@ -97,7 +98,16 @@ export function resolve(committed: Committed, pending: Pending, correct: readonl
     t.pos = l.to;
     t.visited = insertSorted(t.visited, l.to); // 모든 실제 착지는 방문 기록 (덫 칸 포함)
     if (l.kind === 'safe' && l.bonus) { t.score += l.bonus; events.push({ type: 'safe', team: l.team, cell: l.to, points: l.bonus }); }
-    if (l.zoneBonus !== null) { t.score += l.bonus; t.opponentZones = insertSorted(t.opponentZones, l.zoneBonus); events.push({ type: 'zone', team: l.team, zone: l.zoneBonus, points: l.bonus }); }
+    if (l.zoneBonus !== null) {
+      t.score += l.bonus;
+      t.opponentZones = insertSorted(t.opponentZones, l.zoneBonus);
+      events.push({ type: 'zone', team: l.team, zone: l.zoneBonus, points: l.bonus });
+      const owner = committed.teams.findIndex((other) => other.zone === l.zoneBonus);
+      if (owner >= 0 && owner !== l.team) {
+        next.teams[owner].score += ZONE_PENALTY;
+        events.push({ type: 'zonePenalty', team: owner, attacker: l.team, points: ZONE_PENALTY });
+      }
+    }
     if (l.questionId !== null) {
       t.asked = [...t.asked.filter((q) => q !== l.questionId), l.questionId];
       const n = l.snapshot.length, ok = correct[l.team] === true, timeout = correct[l.team] == null;

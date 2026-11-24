@@ -27,7 +27,7 @@ export interface TeamState {
   pos: Cell;
   score: number;
   visited: Cell[];         // 실제로 착지한 칸(+ 출발 칸). 오름차순
-  opponentZones: number[]; // +10 을 받은 상대 출발 구역 id
+  opponentZones: number[]; // +10 을 받고 그 구역 주인에게 -5를 적용한 출발 구역 id
   oasisRound: number | null;
   oasisRank: number | null;
   reconAvailable: boolean;
@@ -90,6 +90,7 @@ export type RoundEvent =
   | { type: 'stay'; team: number; reason: 'bound' | 'noMove' }
   | { type: 'safe'; team: number; cell: Cell; points: number }
   | { type: 'zone'; team: number; zone: number; points: number }
+  | { type: 'zonePenalty'; team: number; attacker: number; points: number }
   | { type: 'quiz'; team: number; level: Level; n: number; correct: boolean; timeout: boolean; points: number }
   | { type: 'trapsRemoved'; cell: Cell; count: number }
   | { type: 'effect'; team: number; effect: 'return' | 'bind' | 'confuse' }

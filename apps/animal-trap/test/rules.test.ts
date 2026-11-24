@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CELLS, OASIS, SPAWN_CELL, ZONES, cellOf, isNeighbor, movesToOasis, neighbors, zoneOf } from '../src/game/board.ts';
 import { makeRng } from '../src/game/rng.ts';
-import { TRAPS_PER_TEAM, autoPlace, canPlace, drawZones, moveTrap, newGame, swapTraps, validPlacement } from '../src/game/setup.ts';
+import { TRAPS_PER_TEAM, autoPlace, canPlace, drawZones, moveTrap, newGame, swapTraps, trapsPerTeam, validPlacement } from '../src/game/setup.ts';
 import { levelFor, pickQuestion, type BankQuestion } from '../src/game/questions.ts';
 import { OASIS_POINTS, applyRecon, displayPositions, land, rankTeams, resolve, teamSensor, validMove } from '../src/game/rules.ts';
 import type { Committed, Trap, TrapType } from '../src/game/types.ts';
@@ -47,14 +47,21 @@ test('이동: 8방향 1칸만, 보드 밖·제자리·두 칸 거부', () => {
   assert.equal(p.landings[0].moved, false, '잘못된 이동은 제자리');
 });
 
-test('설치: 팀당 13개(일반 10·귀환·속박·혼란), 오아시스·모든 출발 구역 금지, 한 칸 1개, 타 팀과 중첩 허용', () => {
-  for (let seed = 1; seed <= 30; seed++) {
-    const rng = makeRng(seed), zones = drawZones(rng);
-    assert.deepEqual([...zones].sort(), ZONES8, '구역 중복 없이 배정');
+test('설치: 4~8팀에서 전체 덫 약 104개, 팀당 특수 덫 3개 유지, 출발 구역 금지', () => {
+  for (let count = 4; count <= 8; count++) for (let seed = 1; seed <= 30; seed++) {
+    const rng = makeRng(seed), zones = drawZones(rng, count);
+    assert.equal(new Set(zones).size, count, '구역 중복 없이 배정');
     const traps = autoPlace(rng, zones);
     assert.ok(validPlacement(traps, zones));
-    assert.equal(traps.length, 8 * TRAPS_PER_TEAM);
+    assert.equal(trapsPerTeam(count), [26, 21, 18, 15, 13][count - 4]);
+    assert.equal(traps.length, count * trapsPerTeam(count));
+    for (let team = 0; team < count; team++) {
+      const mine = traps.filter((t) => t.owner === team);
+      assert.equal(mine.filter((t) => t.type === 'normal').length, trapsPerTeam(count) - 3);
+      for (const type of ['return', 'bind', 'confuse']) assert.equal(mine.filter((t) => t.type === type).length, 1);
+    }
   }
+  assert.equal(TRAPS_PER_TEAM, 13, '기존 8팀 판과 호환');
   assert.ok(!canPlace(0, OASIS[0]));
   assert.ok(!canPlace(0, ZONES[0][0]));
   for (const zone of ZONES) for (const cell of zone) assert.ok(!canPlace(0, cell), '모든 출발 구역에 설치 불가');
@@ -70,6 +77,7 @@ test('설치: 팀당 13개(일반 10·귀환·속박·혼란), 오아시스·모
   assert.equal(moveTrap(traps, ZONES8, 0, mine[0].id, ZONES[1][0]), 'BAD_CELL');
   const swapped = swapTraps(traps, 0, mine[0].id, mine[1].id) as Trap[];
   assert.equal(swapped.find((t) => t.id === mine[0].id)!.cell, mine[1].cell);
+  assert.ok(validPlacement(traps.filter((t) => t.owner < 4), ZONES8.slice(0, 4)), '기존 4팀 설치 중인 판의 13개 덫 허용');
 });
 
 // ── 점수·문제·덫 ───────────────────────────────────────────────
@@ -277,13 +285,16 @@ test('정찰: 3×3 1회, 상대 덫 칸·개수만(자기 덫 제외·종류 없
   assert.equal(applyRecon(after, 0, cellOf(0, 0)), 'NO_RECON', '1회만');
 });
 
-test('상대 출발 구역: 구역당 최초 1회 +10, 자기 구역 없음, 안전 +1 없음, 덫 있으면 문제도', () => {
+test('상대 출발 구역: 공격팀 최초 +10, 구역 주인 -5, 재방문 중복 없음, 덫 있으면 문제도', () => {
   const zone1 = ZONES[1][2]; // (1,7)
   let g = placeTeam(game(), 0, cellOf(2, 7));
   let r = step(g, only(0, zone1));
   assert.equal(r.committed.teams[0].score, 10);
+  assert.equal(r.committed.teams[1].score, -5);
+  assert.ok(r.events.some((e) => e.type === 'zonePenalty' && e.team === 1 && e.attacker === 0 && e.points === -5));
   g = step(r.committed, only(0, ZONES[1][3])).committed;
   assert.equal(g.teams[0].score, 10, '같은 상대 구역 재방문·구역 내 이동 0');
+  assert.equal(g.teams[1].score, -5, '같은 공격팀의 재방문으로 추가 감점 없음');
   const own = placeTeam(game(), 0, cellOf(2, 0));
   const ownCell = ZONES[0].find((c) => c !== SPAWN_CELL[0] && isNeighbor(c, cellOf(2, 0)))!;
   assert.ok(ownCell !== undefined);
@@ -291,7 +302,22 @@ test('상대 출발 구역: 구역당 최초 1회 +10, 자기 구역 없음, 안
   const trapped = placeTeam(game([[2, zone1, 'return']]), 0, cellOf(2, 7));
   const tr = resolve(trapped, land(trapped, only(0, zone1), pick), [false]);
   assert.equal(tr.committed.teams[0].score, 10 - 2, '+10 은 착지 기준, 오답 -2, 귀환해도 +10 유지 (D6)');
+  assert.equal(tr.committed.teams[1].score, -5, '귀환 덫을 밟아도 출발 구역 침입 감점 유지');
   assert.equal(tr.committed.teams[0].pos, SPAWN_CELL[0]);
+});
+
+test('상대 출발 구역: 두 팀이 같은 구역에 처음 들어오면 주인 -10, 빈 구역은 안전 칸', () => {
+  let g = placeTeam(game(), 0, cellOf(2, 7));
+  g = placeTeam(g, 2, cellOf(2, 8));
+  const moves = ZONES8.map((team) => team === 0 || team === 2 ? ZONES[1][2] : null);
+  const both = step(g, moves);
+  assert.equal(both.committed.teams[1].score, -10);
+  assert.equal(both.events.filter((e) => e.type === 'zonePenalty').length, 2);
+
+  const four = placeTeam(newGame(makeRng(1), [0, 2, 4, 6], []), 0, cellOf(2, 7));
+  const emptyZone = step(four, [ZONES[1][2], null, null, null]);
+  assert.equal(emptyZone.committed.teams[0].score, 1);
+  assert.equal(emptyZone.events.filter((e) => e.type === 'zone' || e.type === 'zonePenalty').length, 0);
 });
 
 // ── 순위 ───────────────────────────────────────────────────────

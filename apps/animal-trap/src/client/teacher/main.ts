@@ -302,6 +302,8 @@ function roundSummary(v: TeacherView): string {
   const parts = v.events.flatMap((e) => {
     if (e.type === 'quiz') return [`${name(e.team)} ${e.correct ? '정답' : e.timeout ? '시간초과' : '오답'}(${e.points > 0 ? '+' : ''}${e.points})`];
     if (e.type === 'oasis') return [`${name(e.team)} 오아시스 ${e.rank}등`];
+    if (e.type === 'zone') return [`${name(e.team)} 상대 구역 +${e.points}`];
+    if (e.type === 'zonePenalty') return [`${name(e.attacker)} 침입 → ${name(e.team)} ${e.points}`];
     if (e.type === 'effect') return [`${name(e.team)} ${{ return: '귀환', bind: '속박', confuse: '혼란' }[e.effect]}`];
     return [];
   });

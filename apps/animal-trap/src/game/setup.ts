@@ -9,7 +9,12 @@ import type { Committed, TeamState, Trap, TrapType } from './types.ts';
 
 export const NORMAL_TRAPS = 10;
 export const TRAP_TYPES: readonly TrapType[] = [...Array<TrapType>(NORMAL_TRAPS).fill('normal'), 'return', 'bind', 'confuse'];
-export const TRAPS_PER_TEAM = TRAP_TYPES.length; // 13
+export const TRAPS_PER_TEAM = TRAP_TYPES.length; // 기존 8팀 판의 팀당 13개
+/** 팀 수가 줄어도 판 전체의 덫 수가 약 104개가 되게 한다. 특수 덫은 팀당 각 1개. */
+export const trapsPerTeam = (teamCount: number): number => Math.ceil(TEAMS * TRAPS_PER_TEAM / teamCount);
+const trapTypesFor = (teamCount: number): TrapType[] => [
+  ...Array<TrapType>(trapsPerTeam(teamCount) - 3).fill('normal'), 'return', 'bind', 'confuse'
+];
 
 /** 어느 팀의 출발 구역도 아니고 오아시스도 아닌 칸에만 설치 */
 export const canPlace = (_zone: number, cell: Cell): boolean => isCell(cell) && !isOasis(cell) && zoneOf(cell) === -1;
@@ -23,13 +28,14 @@ export function newTeam(zone: number): TeamState {
     reconAvailable: false, recon: null, bindRounds: [], confuseRounds: [], asked: [] };
 }
 
-/** 팀마다 가능한 칸에서 균등 무작위 13칸 + 종류 무작위 */
+/** 팀마다 가능한 칸에서 균등 무작위 배치. 참여 팀 수에 따라 일반 덫 수 조정. */
 export function autoPlace(rng: Rng, zones: readonly number[]): Trap[] {
   const traps: Trap[] = [];
+  const typesForTeam = trapTypesFor(zones.length);
   zones.forEach((zone, team) => {
     const allowed = [...Array(CELLS).keys()].filter((c) => canPlace(zone, c));
-    const cells = shuffle(rng, allowed).slice(0, TRAPS_PER_TEAM);
-    const types = shuffle(rng, TRAP_TYPES);
+    const cells = shuffle(rng, allowed).slice(0, typesForTeam.length);
+    const types = shuffle(rng, typesForTeam);
     cells.forEach((cell, i) => traps.push({ id: traps.length, owner: team, cell, type: types[i], active: true }));
   });
   return traps;
@@ -61,15 +67,18 @@ export function swapTraps(traps: Trap[], team: number, a: number, b: number): Tr
 export function validPlacement(traps: readonly Trap[], zones: readonly number[]): boolean {
   const count = zones.length;
   if (count < 4 || count > TEAMS || new Set(zones).size !== count || zones.some((z) => !Number.isInteger(z) || z < 0 || z >= TEAMS)) return false;
-  if (traps.length !== count * TRAPS_PER_TEAM) return false;
+  // 배포 전에 시작한 판은 팀당 13개일 수 있다. 설치 마감은 그대로 허용한다.
+  const perTeam = traps.length / count;
+  if (perTeam !== TRAPS_PER_TEAM && perTeam !== trapsPerTeam(count)) return false;
   if (new Set(traps.map((t) => t.id)).size !== traps.length) return false;
   if (traps.some((t) => !Number.isInteger(t.id) || !Number.isInteger(t.owner) || t.owner < 0 || t.owner >= count || t.active !== true)) return false;
   for (let team = 0; team < count; team++) {
     const mine = traps.filter((t) => t.owner === team);
-    if (mine.length !== TRAPS_PER_TEAM) return false;
+    if (mine.length !== perTeam) return false;
     if (new Set(mine.map((t) => t.cell)).size !== mine.length) return false;
     if (mine.some((t) => !canPlace(zones[team], t.cell))) return false;
-    if (mine.map((t) => t.type).sort().join() !== [...TRAP_TYPES].sort().join()) return false;
+    const expected = perTeam === TRAPS_PER_TEAM ? TRAP_TYPES : trapTypesFor(count);
+    if (mine.map((t) => t.type).sort().join() !== [...expected].sort().join()) return false;
   }
   return true;
 }

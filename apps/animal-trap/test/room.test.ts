@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SPAWN_CELL, isOasis, neighbors, zoneOf } from '../src/game/board.ts';
+import { trapsPerTeam } from '../src/game/setup.ts';
 import { createRoom, handle, nextAlarm, DEFAULT_CONFIG, type Actor, type CommandIn, type RoomConfig, type RoomState } from '../src/game/room.ts';
 import { mainRemaining, phaseRemaining } from '../src/game/clock.ts';
 import { teacherView } from '../src/game/views.ts';
@@ -48,7 +49,7 @@ test('선택한 4~8팀만 추첨·설치·이동·공개 화면에 참여하고 
     assert.equal(sim.s.zones!.length, count);
     assert.equal(new Set(sim.s.zones).size, count);
     sim.ok(T, { type: 'startSetup' });
-    assert.equal(sim.s.setupTraps!.length, count * 13);
+    assert.equal(sim.s.setupTraps!.length, count * trapsPerTeam(count));
     if (count < 8) assert.deepEqual(sim.do(team(count), { type: 'trapConfirm' }).result, { ok: false, error: 'BAD_TEAM' });
     for (let t = 0; t < count; t++) sim.ok(team(t), { type: 'trapConfirm' });
     assert.equal(sim.s.phase, 'READY');

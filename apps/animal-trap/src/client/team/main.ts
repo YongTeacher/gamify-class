@@ -288,6 +288,7 @@ function eventLine(e: PublicEvent): string | null {
   switch (e.type) {
     case 'safe': return `<li>🌱 처음 밟은 안전한 칸${pts(e.points)}</li>`;
     case 'zone': return `<li>🏁 다른 팀 출발 구역 도착${pts(e.points)}</li>`;
+    case 'zonePenalty': return `<li>🚨 상대팀이 우리 출발 구역에 들어왔어요${pts(e.points)}</li>`;
     case 'quiz': return `<li>${e.correct ? '🎉 정답! 덫을 모두 없앴어요' : e.timeout ? '⏰ 시간 초과(오답)' : '😵 오답 · 덫이 남았어요'}${pts(e.points)}</li>`;
     case 'effect': return `<li>${{ return: '🌀 귀환 덫! 출발 칸으로 돌아갔어요', bind: '⛓️ 속박 덫! 다음 2라운드 이동 불가', confuse: '🌫️ 혼란 덫! 다음 2라운드 센서가 숨겨져요' }[e.effect]}</li>`;
     case 'oasis': return `<li>🌴 오아시스 ${e.rank}등 도착! 정찰권을 얻었어요${pts(e.points)}</li>`;
@@ -333,7 +334,7 @@ function panel(v: TeamView): string {
   if (v.phase === 'TRAP_SETUP') {
     if (me.status.setupConfirmed) return `<div class="card"><h2>✅ 설치 확정!</h2><p class="muted" style="margin:0">다른 팀이 끝나기를 기다리는 중이에요.</p></div>`;
     const count = (t: string) => v.me.traps.filter((x) => x.type === t).length;
-    return `<div class="card"><h2>🪤 덫 13개가 자동으로 놓였어요</h2>
+    return `<div class="card"><h2>🪤 덫 ${v.me.traps.length}개가 자동으로 놓였어요</h2>
       <p class="muted" style="margin:0 0 10px">덫을 고르고(보드나 아래 목록) → 옮길 칸을 누르면 이동해요. 덫 두 개를 차례로 고르면 자리를 바꿔요. 칸이 작으면 🔍 확대를 쓰세요.<br>오아시스·모든 팀의 출발 구역에는 놓을 수 없고, 우리 덫도 우리에게 발동해요!</p>
       <div class="legend">${(['normal', 'return', 'bind', 'confuse'] as const).map((t) => `<span>${TRAP_ICON[t]} ${TRAP_NAME[t]} ${count(t)}개</span>`).join('')}</div></div>
       ${v.me.controller ? `<div class="trap-list" role="group" aria-label="우리 덫 목록">${v.me.traps.map((t) => `<button data-trap="${t.id}" aria-pressed="${ui.selectedTrap === t.id}" ${disabledUnlessActive(v)}>${TRAP_ICON[t.type]} ${coord(t.cell)}</button>`).join('')}</div>

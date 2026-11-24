@@ -142,6 +142,7 @@ function eventText(v: TvView, e: PublicEvent): string | null {
     case 'quiz': return `<li><span>${a(e.team)} ${e.correct ? '🎉 정답! 덫 제거' : e.timeout ? '⏰ 시간 초과' : '😵 오답'}</span>${p(e.points)}</li>`;
     case 'oasis': return `<li><span>${a(e.team)} 🌴 오아시스 ${e.rank}등!</span>${p(e.points)}</li>`;
     case 'zone': return `<li><span>${a(e.team)} 🏁 상대 출발 구역</span>${p(e.points)}</li>`;
+    case 'zonePenalty': return `<li><span>${a(e.attacker)} 🚨 ${a(e.team)} 출발 구역 침입</span>${p(e.points)}</li>`;
     case 'effect': return `<li><span>${a(e.team)} ${{ return: '🌀 귀환!', bind: '⛓️ 속박!', confuse: '🌫️ 혼란!' }[e.effect]}</span><span></span></li>`;
     default: return null;
   }

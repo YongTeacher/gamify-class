@@ -24,6 +24,7 @@ export const ANIMALS = [
 export type PublicEvent =
   | { type: 'move'; team: number; from: Cell; to: Cell } | { type: 'stay'; team: number; reason: 'bound' | 'noMove' }
   | { type: 'safe'; team: number; points: number } | { type: 'zone'; team: number; zone: number; points: number }
+  | { type: 'zonePenalty'; team: number; attacker: number; points: number }
   | { type: 'quiz'; team: number; correct: boolean; timeout: boolean; points: number }
   | { type: 'trapsRemoved'; cell: Cell; count: number } | { type: 'effect'; team: number; effect: 'return' | 'bind' | 'confuse' }
   | { type: 'oasis'; team: number; rank: number; points: number };
@@ -83,6 +84,7 @@ function publicEvent(e: RoundEvent): PublicEvent {
     case 'stay': return { type: 'stay', team: e.team, reason: e.reason };
     case 'safe': return { type: 'safe', team: e.team, points: e.points };
     case 'zone': return { type: 'zone', team: e.team, zone: e.zone, points: e.points };
+    case 'zonePenalty': return { type: 'zonePenalty', team: e.team, attacker: e.attacker, points: e.points };
     case 'quiz': return { type: 'quiz', team: e.team, correct: e.correct, timeout: e.timeout, points: e.points }; // 난이도는 비공개(6-1)
     case 'trapsRemoved': return { type: 'trapsRemoved', cell: e.cell, count: e.count };
     case 'effect': return { type: 'effect', team: e.team, effect: e.effect };
