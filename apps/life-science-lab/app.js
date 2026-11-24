@@ -2,6 +2,7 @@ import { ReportSaver } from './autosave.js';
 import { DraftStore } from './draft-store.js';
 import { parseRoster, prepareRoster, rosterCSV } from './roster.js';
 import { reportDocumentHTML, reportFileName } from './report-document.js';
+import { renderQuiz } from './quiz.js';
 const $ = (s) => document.querySelector(s);
 const main = $('#main'), clone = (v) => structuredClone(v);
 const draftStore = new DraftStore();
@@ -173,6 +174,7 @@ async function route() {
     else if (page === 'lab') await lab();
     else if (page === 'write') await editor(id);
     else if (page === 'archive') await archive();
+    else if (page === 'quiz') await renderQuiz({main,api,user:state.user,esc});
     else if (page === 'work') await work(id);
     else if (page === 'teacher') await admin();
     else activities();

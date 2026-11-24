@@ -2,6 +2,7 @@ import { passwordHash, verifyPassword, signSession, readSession, hmac, validStud
 import { sheetsRepository } from './repository.js';
 import { d1Repository } from './d1-repository.js';
 import { syncToSheets, migrateFromSheets } from './sheets-sync.js';
+import { handleQuiz } from './quiz.js';
 // D1 is the source of truth when the LAB_DB binding exists; otherwise the old Sheets path.
 export const repositoryFor = (env) => (env.LAB_DB ? d1Repository(env) : sheetsRepository(env));
 const STUDENT = new Set(['myReports','report.open','report.save','report.submit']);
@@ -83,6 +84,7 @@ export async function handle(request, env, injectedRepository) {
     const user = await readSession(request, env.LAB_SESSION_SECRET);
     if (!user) return json({ error: '로그인해 주세요.' }, 401);
     if (action === 'me') return json({ result: await repo.execute('me', {}, user) });
+    if (typeof action === 'string' && action.startsWith('quiz.')) return json({ result: await handleQuiz(action, payload, user, env) });
     if(action==='groups.enter') {
       const group=await repo.execute(action,payload,user);
       const next={role:'teacher',owner:true,groupId:group.id};
