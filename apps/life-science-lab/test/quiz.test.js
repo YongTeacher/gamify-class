@@ -40,3 +40,26 @@ test('퀴즈는 그룹과 역할을 격리하고 교사가 최종 채점을 확�
   await assert.rejects(call('quiz.results',{id:created.id},pupil),{status:403});
   await assert.rejects(call('quiz.attempt',{quizId:created.id},{...pupil,groupId:'other'}),{status:401});
 });
+
+test('선택형·짝맞추기·순서맞추기는 정답을 숨기고 정확히 채점한다',async()=>{
+  const LAB_DB=d1Shim();LAB_DB.raw.exec(readFileSync(new URL('../migrations/0003_quizzes.sql',import.meta.url),'utf8'));
+  const student={id:'student-2',groupId:'legacy',authVersion:1,active:true,name:'테스트학생'};
+  LAB_DB.raw.prepare('INSERT INTO Students (id,grp,data) VALUES (?,?,?)').run(student.id,'legacy',JSON.stringify(student));
+  const env={LAB_DB},teacher={role:'teacher',groupId:'legacy',owner:true},pupil={role:'student',groupId:'legacy',id:student.id,authVersion:1};
+  const call=(a,p={},u=teacher)=>handleQuiz(a,p,u,env);
+  const {id}=await call('quiz.create',{title:'세포 소기관',questions:[
+    {id:'choice',type:'choice',prompt:'단백질 합성 장소는?',points:2,choices:['핵','리보솜','골지체'],correct:1},
+    {id:'match',type:'match',prompt:'소기관과 기능을 연결하세요.',points:3,pairs:[{left:'핵',right:'유전 정보'},{left:'리보솜',right:'단백질 합성'}]},
+    {id:'order',type:'order',prompt:'단백질 분비 경로를 순서대로.',points:4,items:['리보솜','소포체','골지체']}
+  ]});
+  await call('quiz.status',{id,status:'open'});
+  const publicQuiz=(await call('quiz.attempt',{quizId:id},pupil)).quiz;
+  assert.equal(publicQuiz.questions[0].correct,undefined);
+  assert.equal(publicQuiz.questions[1].pairs[0],'핵');
+  assert.equal(publicQuiz.questions[1].options[0],'단백질 합성');
+  assert.equal(publicQuiz.questions[2].items,undefined);
+  const answers={choice:'1',match:JSON.stringify(['유전 정보','단백질 합성']),order:JSON.stringify(['리보솜','소포체','골지체'])};
+  await call('quiz.submit',{quizId:id,answers},pupil);
+  const grading=(await call('quiz.results',{id})).attempts[0].grading;
+  assert.deepEqual([grading.choice.score,grading.match.score,grading.order.score],[2,3,4]);
+});

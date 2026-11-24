@@ -2,24 +2,44 @@ const fail = (status, message) => { throw Object.assign(new Error(message), { st
 const parse = (value) => JSON.parse(value || '[]');
 const clean = (value) => String(value ?? '').normalize('NFKC').trim().replace(/\s+/g, '').toLocaleLowerCase('ko');
 const quizRow = (row, teacher = false) => row && ({ id:row.id, title:row.title, status:row.status,
-  questions:parse(row.questions).map((q) => teacher ? q : {id:q.id,type:q.type,prompt:q.prompt,points:q.points}),
+  questions:parse(row.questions).map((q) => teacher ? q : {id:q.id,type:q.type,prompt:q.prompt,points:q.points,hint:q.hint||'',
+    choices:q.type==='choice'?q.choices:undefined,
+    pairs:q.type==='match'?q.pairs.map((v)=>v.left):undefined,
+    options:q.type==='match'?q.pairs.map((v)=>v.right).reverse():q.type==='order'?[...q.items].reverse():undefined}),
   updatedAt:row.updatedAt });
 const attemptRow = (row, teacher = false) => row && ({ id:row.id, quizId:row.quizId, studentId:teacher ? row.studentId : undefined,
   answers:parse(row.answers), status:row.status, version:row.version, updatedAt:row.updatedAt,
   grading:teacher || row.status === 'graded' ? parse(row.grading) : undefined });
 const question = (raw) => {
   const type=String(raw.type||'');
-  if (!['ox','short','essay'].includes(type)) fail(400,'문항 유형을 선택하세요.');
+  if (!['choice','short','ox','essay','match','order'].includes(type)) fail(400,'문항 유형을 선택하세요.');
   const prompt=String(raw.prompt||'').trim();
   const points=Number(raw.points);
   if (!prompt || prompt.length>1000 || !Number.isInteger(points) || points<1 || points>100) fail(400,'문항과 1~100점 배점을 확인하세요.');
-  const accepted=type==='essay' ? [] : String(raw.accepted||'').split(/\n|,/).map((s)=>s.trim()).filter(Boolean).slice(0,20);
-  if (type!=='essay' && !accepted.length) fail(400,'O/X·단답형의 정답을 입력하세요.');
+  const accepted=['short','ox'].includes(type) ? String(raw.accepted||'').split(/\n|,/).map((s)=>s.trim()).filter(Boolean).slice(0,20) : [];
+  if (['short','ox'].includes(type) && !accepted.length) fail(400,'O/X·단답형의 정답을 입력하세요.');
   if (type==='ox' && accepted.some((s)=>!['O','X'].includes(s.toUpperCase()))) fail(400,'O/X 정답은 O 또는 X로 입력하세요.');
   const rubric=String(raw.rubric||'').trim().slice(0,3000);
   if (type==='essay' && !rubric) fail(400,'서술형 채점 기준을 입력하세요.');
-  return {id:String(raw.id||crypto.randomUUID()),type,prompt,points,accepted,rubric};
+  const choices=type==='choice' ? (Array.isArray(raw.choices)?raw.choices:[]).map((v)=>String(v||'').trim()).filter(Boolean).slice(0,8) : [];
+  const correct=type==='choice' ? Number(raw.correct) : 0;
+  if(type==='choice' && (choices.length<2 || !Number.isInteger(correct) || correct<0 || correct>=choices.length)) fail(400,'선택형은 보기 2개 이상과 정답 보기를 지정하세요.');
+  const pairs=type==='match' ? (Array.isArray(raw.pairs)?raw.pairs:[]).map((v)=>({left:String(v?.left||'').trim(),right:String(v?.right||'').trim()})).slice(0,10) : [];
+  if(type==='match' && (pairs.length<2 || pairs.some((v)=>!v.left||!v.right))) fail(400,'짝맞추기는 두 쌍 이상을 완성하세요.');
+  const items=type==='order' ? (Array.isArray(raw.items)?raw.items:[]).map((v)=>String(v||'').trim()).slice(0,10) : [];
+  if(type==='order' && (items.length<2 || items.some((v)=>!v))) fail(400,'순서맞추기는 두 단계 이상을 입력하세요.');
+  return {id:String(raw.id||crypto.randomUUID()),type,prompt,points,accepted,rubric,choices,correct,pairs,items,strict:raw.strict===true,hint:String(raw.hint||'').trim().slice(0,500)};
 };
+function automatic(q,answer) {
+  if(q.type==='essay') return {score:null,source:'teacher-pending',feedback:''};
+  let correct=false;
+  if(q.type==='choice') correct=Number(answer)===q.correct && answer!=='';
+  else if(q.type==='match'||q.type==='order') {
+    try { const values=JSON.parse(answer);correct=Array.isArray(values)&&values.length===(q.type==='match'?q.pairs:q.items).length &&
+      values.every((v,i)=>clean(v)===clean(q.type==='match'?q.pairs[i].right:q.items[i])); } catch {correct=false;}
+  } else correct=q.accepted.some((v)=>q.strict?String(v).normalize('NFKC').trim()===String(answer).normalize('NFKC').trim():clean(v)===clean(answer));
+  return {score:correct?q.points:0,source:'automatic',feedback:''};
+}
 async function getQuiz(db,id,groupId) {
   const row=await db.prepare('SELECT * FROM LabQuizzes WHERE id = ? AND groupId = ?').bind(id,groupId).first();
   if(!row) fail(404,'퀴즈를 찾을 수 없습니다.');
@@ -62,9 +82,7 @@ export async function handleQuiz(action,p,user,env) {
     const questions=parse(quiz.questions), input=p.answers && typeof p.answers==='object' ? p.answers : {};
     const answers=Object.fromEntries(questions.map((q)=>[q.id,String(input[q.id]||'').slice(0,4000)]));
     const submit=action==='quiz.submit';
-    const grading=submit ? Object.fromEntries(questions.map((q)=>[q.id,q.type==='essay'
-      ? {score:null,source:'teacher-pending',feedback:''}
-      : {score:q.accepted.some((v)=>clean(v)===clean(answers[q.id])) ? q.points : 0,source:'automatic',feedback:''}])) : {};
+    const grading=submit ? Object.fromEntries(questions.map((q)=>[q.id,automatic(q,answers[q.id])])) : {};
     const now=new Date().toISOString(), id=existing?.id||crypto.randomUUID();
     if(existing) {
       const result=await db.prepare('UPDATE LabQuizAttempts SET answers=?,grading=?,status=?,version=version+1,updatedAt=? WHERE id=? AND version=? AND status=?').bind(JSON.stringify(answers),JSON.stringify(grading),submit?'submitted':'draft',now,id,existing.version,'draft').run();
