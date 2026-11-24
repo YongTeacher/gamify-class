@@ -96,6 +96,7 @@ const PUBLIC = ['code', 'title', 'phase', 'step', 'round', 'stateVersion', 'serv
   'teams[].summary', 'teams[].summary.correct', 'teams[].summary.wrong', 'teams[].summary.zones', 'teams[].summary.oasisRank',
   'events[]', 'events[].type', 'events[].team', 'events[].attacker', 'events[].from', 'events[].to', 'events[].reason', 'events[].points', 'events[].zone', 'events[].correct', 'events[].timeout',
   'events[].cell', 'events[].count', 'events[].effect', 'events[].rank', 'events[].target', 'oasisArrivals', 'endReason',
+  'pendingHighlights[]', 'pendingHighlights[].team', 'pendingHighlights[].cell', 'pendingHighlights[].kind',
   'revealedSpots[]', 'revealedSpots[].cell', 'revealedSpots[].effect',
   'trapMap', 'trapMap[]', 'trapMap[].cell', 'trapMap[].owner', 'trapMap[].type', 'trapMap[].active',
   'reviewDisplay.mode', 'reviewDisplay.questionId', 'reviewQuestions[]', 'reviewQuestions[].id', 'reviewQuestions[].level', 'reviewQuestions[].text', 'reviewQuestions[].choices[]', 'reviewQuestions[].answer', 'reviewQuestions[].explanation'];

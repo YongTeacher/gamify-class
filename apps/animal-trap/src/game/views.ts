@@ -47,6 +47,7 @@ export interface PublicView {
   serverNow: number; paused: boolean; mainRemainingMs: number; phaseRemainingMs: number | null;
   config: { durationMs: number; moveMs: number; quizMs: number; setupMs: number; autoNext: boolean; teamCount: number };
   teams: PublicTeam[]; events: PublicEvent[]; oasisArrivals: number; endReason: 'time' | 'manual' | null;
+  pendingHighlights: { team: number; cell: Cell; kind: 'trap' | 'oasis' | 'zone' }[];
   revealedSpots: { cell: Cell; effect: HiddenEffect }[];
   trapMap: FullTrap[] | null;              // 종료 후 교사가 '덫 지도 공개'를 눌렀을 때만
   reviewQuestions: RevealedQuestion[];     // 복습에서 교사가 공개한 문항만
@@ -140,6 +141,8 @@ function publicView(s: RoomState, bank: readonly BankQuestion[], now: number): P
     serverNow: now, paused: s.clock.paused, mainRemainingMs: mainRemaining(s.clock, now), phaseRemainingMs: phaseRemaining(s.clock, now),
     config: { durationMs: s.config.durationMs, moveMs: s.config.moveMs, quizMs: s.config.quizMs, setupMs: s.config.setupMs, autoNext: s.config.autoNext, teamCount: count },
     teams, events: s.lastEvents.map(publicEvent), oasisArrivals: c?.oasisArrivals ?? 0, endReason: s.endReason,
+    pendingHighlights: s.pending?.landings.filter((landing) => landing.moved && (landing.snapshot.length > 0 || landing.kind === 'oasis' || landing.kind === 'zone'))
+      .map((landing) => ({ team: landing.team, cell: landing.to, kind: landing.snapshot.length > 0 ? 'trap' as const : landing.kind === 'oasis' ? 'oasis' as const : 'zone' as const })) ?? [],
     revealedSpots: (c?.hiddenSpots ?? []).filter((spot) => spot.claimedBy !== null).map((spot) => ({ cell: spot.cell, effect: spot.effect })),
     trapMap: finished(s) && s.review.trapsRevealed ? fullTraps(s) : null,
     reviewQuestions: s.review.revealed.map((id) => bank.find((q) => q.id === id)).filter((q): q is BankQuestion => !!q).map(revealQ),

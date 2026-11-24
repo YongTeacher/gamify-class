@@ -8,6 +8,7 @@
  */
 import { ANIMALS, type TeacherView } from '../../game/views.ts';
 import { draw, TEAM_COLORS, type BoardModel } from '../shared/board.ts';
+import { MomentPlayer } from '../shared/moments.ts';
 import { call, command, Countdown, errText, live, mmss } from '../shared/net.ts';
 import { qrSvg } from '../shared/qr.ts';
 
@@ -174,6 +175,7 @@ async function createGame() {
 // ── 진행 화면 ────────────────────────────────────────────────
 let game: Saved;
 let view: TeacherView | null = null;
+let moments = new MomentPlayer();
 let clock: Countdown | null = null;
 let busy = false;
 let pendingFocus: string | null = null;
@@ -194,13 +196,14 @@ async function teacher(cmd: Record<string, unknown>): Promise<unknown | null> {
 
 function openGame(g: Saved) {
   endSession();
+  moments = new MomentPlayer();
   game = g;
   history.replaceState(null, '', '#' + g.code);
   app.innerHTML = `<p class="muted">판 ${g.code} 연결 중…</p>`;
   const sock = live<TeacherView>({
     code: g.code,
     hello: () => ({ role: 'teacher', key: g.hostKey }),
-    onState: (v) => { view = v; clock = Countdown.of(v); render(); },
+    onState: (v) => { moments.update(v, performance.now()); view = v; clock = Countdown.of(v); render(); },
     onStatus: (up) => { $('#banners').innerHTML = up ? '' : '<div class="banner off" role="alert">연결이 끊겼어요. 다시 연결하는 중…</div>'; },
     onClosedForGood: (code) => { if (code === 4003) { $('#banners').innerHTML = '<div class="banner off" role="alert">이 판에 기기가 너무 많이 접속해 이 화면의 연결을 끊었어요. 새로 고치면 다시 연결돼요.</div>'; return; } forget(g.code); renderHome(); toast('이 판에 접속할 수 없어요(열쇠가 맞지 않음).'); }
   });
@@ -219,7 +222,7 @@ function tickClock() {
 
 function boardModel(v: TeacherView): BoardModel {
   return { animals: v.teams.map((t) => ({ team: t.team, emoji: t.animal.emoji, pos: t.pos })), zones: v.teams.map((t) => t.zone),
-    trapMap: v.final ? v.final.traps : null, revealedSpots: v.revealedSpots };
+    trapMap: v.final ? v.final.traps : null, revealedSpots: v.revealedSpots, effects: moments.effects(performance.now()) };
 }
 
 const studentUrl = (team: number) => `${location.origin}/#${game.code}-${team}`;
@@ -288,7 +291,7 @@ function controls(v: TeacherView, off: string): string {
   if (v.phase === 'READY') main = b('startGame', '🚀 게임 시작', 'btn', off);
   if (v.phase === 'RUNNING' && v.step === 'MOVE_OPEN') main = b('closeMove', '⏭ 이동 지금 마감', 'btn', off);
   if (v.phase === 'RUNNING' && v.step === 'QUESTION_OPEN') main = b('closeQuiz', '⏭ 문제 지금 마감', 'btn', off);
-  if (v.phase === 'RUNNING' && v.step === 'ROUND_SUMMARY') main = b('next', '▶ 다음 라운드', 'btn', off) + (v.config.autoNext ? '<span class="muted">5초 뒤 자동으로 넘어가요</span>' : '');
+  if (v.phase === 'RUNNING' && v.step === 'ROUND_SUMMARY') main = b('next', '▶ 다음 라운드', 'btn', off) + (v.config.autoNext ? '<span class="muted">결과 화면 시간이 끝나면 자동으로 넘어가요</span>' : '');
   if (v.phase === 'FINISHED') main = b('review', '📖 문제 복습 시작', 'btn', busy ? 'disabled' : '');
   const fin = v.phase === 'FINISHED' || v.phase === 'REVIEW';
   const traps = fin ? (v.trapMap ? b('showMap', `🗺 TV에 덫 지도${v.reviewDisplay.mode === 'map' ? ' (표시 중)' : ''}`, 'btn ghost', busy ? 'disabled' : '') : b('revealTraps', '🗺 전체 덫 지도 공개(TV·학생)', 'btn ghost', busy ? 'disabled' : '')) + b('showRanking', `🏆 TV에 순위${v.reviewDisplay.mode === 'ranking' ? ' (표시 중)' : ''}`, 'btn ghost', busy ? 'disabled' : '') : '';

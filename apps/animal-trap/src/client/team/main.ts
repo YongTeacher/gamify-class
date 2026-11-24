@@ -8,6 +8,7 @@
  */
 import type { PublicEvent, TeamView } from '../../game/views.ts';
 import { cellAt, colOf, draw, neighbors, OASIS, rowOf, TEAM_COLORS, TRAP_ICON, TRAP_NAME, zoneOf, type BoardModel } from '../shared/board.ts';
+import { MomentPlayer } from '../shared/moments.ts';
 import { call, command, Countdown, errText, live, mmss } from '../shared/net.ts';
 
 const ANIMALS = ['🐆 치타', '🐅 호랑이', '🦓 얼룩말', '🐎 말', '🦒 기린', '🦘 캥거루', '🐇 토끼', '🐢 거북이'];
@@ -104,6 +105,7 @@ let creds: Creds;
 let view: TeamView | null = null;
 let clock: Countdown | null = null;
 let canvas: HTMLCanvasElement | null = null;
+let moments = new MomentPlayer();
 const ui = { selectedTrap: null as number | null, pick: null as number | null, zoom: false, focus: null as number | null, reconMode: false, reconTL: null as number | null, bonusMode: null as 'teleport' | 'trap' | null, bonusCell: null as number | null, busy: false };
 let resetKey = '';
 let dirty = true;
@@ -126,6 +128,7 @@ function resetUiAll() { Object.assign(ui, { selectedTrap: null, pick: null, zoom
 function start(c: Creds) {
   endSession();
   sessionNo++; resetUiAll();
+  moments = new MomentPlayer();
   creds = c;
   app.innerHTML = `
     <header class="hud" id="hud"></header>
@@ -141,6 +144,7 @@ function start(c: Creds) {
     code: c.code,
     hello: () => ({ role: 'team', team: c.team, pin: c.pin, token: c.token ?? '' }),
     onState: (v) => {
+      moments.update(v, performance.now());
       view = v; clock = Countdown.of(v);
       const key = [v.phase, v.round, v.step, v.me.controller, v.paused].join('|');
       if (key !== resetKey) { resetKey = key; ui.selectedTrap = null; ui.pick = null; ui.bonusMode = null; ui.bonusCell = null; if (!reconOpen(v)) ui.reconMode = false; }
@@ -211,7 +215,7 @@ function boardModel(v: TeamView): BoardModel {
   const m: BoardModel = {
     animals: v.teams.map((t) => ({ team: t.team, emoji: t.animal.emoji, pos: t.pos, highlight: t.team === v.me.team })),
     zones: v.teams.map((t) => t.zone), myTeam: v.me.team, myTraps: v.me.traps, selectedTrap: ui.selectedTrap,
-    visited: v.me.visited, recon: v.me.recon, trapMap: v.trapMap, revealedSpots: v.revealedSpots,
+    visited: v.me.visited, recon: v.me.recon, trapMap: v.trapMap, revealedSpots: v.revealedSpots, effects: moments.effects(performance.now()),
     sensor: v.phase === 'RUNNING' && pos !== null ? { cell: pos, value: v.me.sensor } : null,
     view: zoomWindow(v)
   };

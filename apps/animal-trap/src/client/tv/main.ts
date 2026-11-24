@@ -7,6 +7,7 @@
  */
 import type { PublicEvent, TvView } from '../../game/views.ts';
 import { draw, TEAM_COLORS, type BoardModel } from '../shared/board.ts';
+import { MomentPlayer, type Moment } from '../shared/moments.ts';
 import { command, Countdown, errText, live, mmss } from '../shared/net.ts';
 
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
@@ -32,6 +33,8 @@ let idleText = '';
 let stopAll: () => void = () => {};
 let controlBusy = false;
 let noticeTimer: number | undefined;
+let momentTimer: number | undefined;
+const moments = new MomentPlayer();
 
 // 교사 화면에서 만든 판을 같은 브라우저의 TV 탭으로 열었을 때만 조작한다.
 // TV 열쇠만으로는 서버의 교사 명령을 실행할 수 없다.
@@ -121,7 +124,7 @@ document.addEventListener('fullscreenchange', renderTools);
 function shell() {
   app.style.display = '';
   app.innerHTML = `
-    <div class="stage"><canvas class="board" id="board" role="img" aria-label="공용 게임판"></canvas><div id="overlay"></div></div>
+    <div class="stage"><canvas class="board" id="board" role="img" aria-label="공용 게임판"></canvas><div id="impact" class="impact" aria-live="polite"></div><div id="overlay"></div></div>
     <aside class="side">
       <div class="title"><h1 id="title"></h1><span class="code" id="code"></span></div>
       <div class="clocks"><div class="card"><div class="lbl">남은 게임 시간</div><b id="mainClock">--:--</b></div><div class="card step" id="stepBox"><div class="lbl" id="stepLabel"></div><b id="phaseClock"></b></div></div>
@@ -134,6 +137,18 @@ function shell() {
 
 const STEP: Record<string, string> = { MOVE_OPEN: '이동 고르는 중', QUESTION_OPEN: '문제 풀이', ROUND_SUMMARY: '라운드 결과' };
 const PHASE: Record<string, string> = { LOBBY: '입장 대기', DRAWN: '출발 구역 추첨', TRAP_SETUP: '덫 설치 중', READY: '곧 시작', FINISHED: '게임 끝', REVIEW: '문제 복습' };
+const bonusName = (effect: string) => ({ swap: '점수 교환', drain: '상대 점수 감점', gain: '추가 점수', teleport: '순간이동', stride: '3칸 이동', trap: '추가 덫 설치' } as Record<string, string>)[effect] ?? '히든 보상';
+
+function showMoments(fresh: Moment[]) {
+  const root = document.getElementById('impact'); if (!root || !fresh.length) return;
+  const visible = fresh.slice(0, 4);
+  root.innerHTML = visible.map((moment, i) => `<div class="impact-card ${moment.kind}" style="--team:${TEAM_COLORS[moment.team]};--delay:${i * 80}ms">
+    <span class="impact-icon" aria-hidden="true">${moment.icon}</span><span class="impact-copy"><strong>${esc(moment.title)}</strong><small>${esc(moment.detail)}</small></span>
+    ${moment.points === undefined ? '' : `<b class="impact-points">${moment.points > 0 ? '+' : ''}${moment.points}</b>`}</div>`).join('')
+    + (fresh.length > visible.length ? `<div class="impact-more">그 외 ${fresh.length - visible.length}건은 오른쪽 기록을 확인하세요</div>` : '');
+  clearTimeout(momentTimer);
+  momentTimer = window.setTimeout(() => { root.innerHTML = ''; }, 3200);
+}
 
 function eventText(v: TvView, e: PublicEvent): string | null {
   const a = (t: number) => `${v.teams[t].animal.emoji} ${esc(v.teams[t].teamName)}`;
@@ -144,8 +159,8 @@ function eventText(v: TvView, e: PublicEvent): string | null {
     case 'zone': return `<li><span>${a(e.team)} 🏁 다른 출발 구역</span>${p(e.points)}</li>`;
     case 'zonePenalty': return `<li><span>${a(e.attacker)} 🚨 ${a(e.team)} 출발 구역 침입</span>${p(e.points)}</li>`;
     case 'effect': return `<li><span>${a(e.team)} ${{ return: '🌀 귀환!', bind: '⛓️ 속박!', confuse: '🌫️ 혼란!' }[e.effect]}</span><span></span></li>`;
-    case 'hidden': return `<li><span>${a(e.team)} ✨ 히든 스팟 발견!</span><span>${e.points ? p(e.points) : '보상 획득'}</span></li>`;
-    case 'bonusUsed': return `<li><span>${a(e.team)} ✨ 히든 보상 사용</span><span>${e.points ? p(e.points) : ''}</span></li>`;
+    case 'hidden': return `<li><span>${a(e.team)} ✨ 히든 스팟 · ${bonusName(e.effect)}</span><span>${e.points ? p(e.points) : '획득'}</span></li>`;
+    case 'bonusUsed': return `<li><span>${a(e.team)} ⚡ ${bonusName(e.effect)} 사용${e.target === undefined ? '' : ' → ' + a(e.target)}</span><span>${e.points ? p(e.points) : ''}</span></li>`;
     default: return null;
   }
 }
@@ -174,7 +189,8 @@ function render() {
     if (t.oasisRank) s.push(`🌴${t.oasisRank}`);
     return s.join(' ');
   };
-  $('#scores').innerHTML = order.map((t) => `<li style="--c:${TEAM_COLORS[t.team]}"><span class="rk">${t.rank}</span><span class="an" aria-hidden="true">${t.animal.emoji}</span><span>${esc(t.teamName)}</span><span class="st">${status(t)}</span><span class="sc">${t.score}</span></li>`).join('');
+  const activeTeams = new Set(moments.effects(performance.now()).flatMap((moment) => moment.targetTeam === undefined ? [moment.team] : [moment.team, moment.targetTeam]));
+  $('#scores').innerHTML = order.map((t) => `<li class="${activeTeams.has(t.team) ? 'score-impact' : ''}" style="--c:${TEAM_COLORS[t.team]}"><span class="rk">${t.rank}</span><span class="an" aria-hidden="true">${t.animal.emoji}</span><span>${esc(t.teamName)}</span><span class="st">${status(t)}</span><span class="sc">${t.score}</span></li>`).join('');
   // 라운드 사건(결과 단계에서만, 새 라운드일 때만 다시 그려 애니메이션)
   const key = `${v.round}:${v.step}:${v.events.length}`;
   if (key !== lastEventsKey) {
@@ -182,6 +198,7 @@ function render() {
     $('#feed').innerHTML = v.phase === 'RUNNING' && v.step === 'ROUND_SUMMARY' ? v.events.map((e) => eventText(v, e)).filter(Boolean).slice(0, 6).join('') : '';
   }
   $('#overlay').innerHTML = overlay(v);
+  if (v.phase !== 'RUNNING') { clearTimeout(momentTimer); const impact = document.getElementById('impact'); if (impact) impact.innerHTML = ''; }
   renderControls(v);
   tickClock();
 }
@@ -218,7 +235,7 @@ function tickClock() {
 function boardModel(v: TvView): BoardModel {
   // 이번 라운드에 움직인 동물은 반짝임으로 강조
   const moved = new Set(v.phase === 'RUNNING' && v.step !== 'MOVE_OPEN' ? v.events.filter((e) => e.type === 'move').map((e) => (e as { team: number }).team) : []);
-  return { animals: v.teams.map((t) => ({ team: t.team, emoji: t.animal.emoji, pos: t.pos, highlight: moved.has(t.team) })), zones: v.teams.map((t) => t.zone), trapMap: v.trapMap, revealedSpots: v.revealedSpots };
+  return { animals: v.teams.map((t) => ({ team: t.team, emoji: t.animal.emoji, pos: t.pos, highlight: moved.has(t.team) })), zones: v.teams.map((t) => t.zone), trapMap: v.trapMap, revealedSpots: v.revealedSpots, effects: moments.effects(performance.now()) };
 }
 
 // ── 시작 ────────────────────────────────────────────────────
@@ -229,7 +246,7 @@ else {
   live<TvView>({
     code: cred.code,
     hello: () => ({ role: 'tv', key: cred.key }),
-    onState: (v) => { view = v; clock = Countdown.of(v); render(); },
+    onState: (v) => { const fresh = moments.update(v, performance.now()); view = v; clock = Countdown.of(v); render(); showMoments(fresh); },
     onStatus: (up) => { $('#banners').innerHTML = up ? '' : '<div class="banner off">연결이 끊겼어요. 다시 연결하는 중…</div>'; },
     onClosedForGood: (code) => { if (code === 4003) { waitScreen('같은 판의 TV 화면이 너무 많이 열려 이 화면의 연결을 끊었어요. 새로 고치면 다시 연결돼요.'); return; } stopAll(); try { sessionStorage.removeItem(SS); } catch { /* */ } view = null; waitScreen('TV 열쇠가 바뀌었어요. 교사 화면에서 ‘TV 화면 열기’를 다시 눌러 주세요.'); }
   });
@@ -239,5 +256,5 @@ else {
   const loop = (t: number) => { const c = document.getElementById('board') as HTMLCanvasElement | null; if (c && view && (!reduce.matches ? t - last > 80 : t - last > 1000)) { draw(c, boardModel(view), t); last = t; } raf = requestAnimationFrame(loop); };
   raf = requestAnimationFrame(loop);
   // 열쇠가 무효가 되면 음악·시계·그리기를 모두 멈춘다
-  stopAll = () => { bgm.pause(); clearInterval(timer); cancelAnimationFrame(raf); };
+  stopAll = () => { bgm.pause(); clearInterval(timer); clearTimeout(momentTimer); cancelAnimationFrame(raf); };
 }

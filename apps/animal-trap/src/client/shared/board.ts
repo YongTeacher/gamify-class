@@ -1,3 +1,5 @@
+import type { BoardEffect, MomentKind } from './moments.ts';
+
 /**
  * board.ts — 16×16 보드를 Canvas 2D 로 그린다 (팀 폰·TV 공용). 화면은 받은 뷰를 그릴 뿐 규칙을 판단하지 않는다.
  *
@@ -36,6 +38,7 @@ export interface BoardModel {
   reconPreview?: number | null;      // 3×3 좌상단
   trapMap?: { cell: number; owner: number; type: string; active: boolean }[] | null;
   revealedSpots?: { cell: number; effect: string }[];
+  effects?: BoardEffect[];
   sensor?: { cell: number; value: number | null } | null;
   /** 보이는 범위 (확대 시). 없으면 전체 */
   view?: { r0: number; c0: number; n: number };
@@ -160,6 +163,42 @@ export function draw(canvas: HTMLCanvasElement, m: BoardModel, t = performance.n
       if (a.highlight) { g.strokeStyle = `rgba(255,252,179,${.55 + .4 * pulse})`; g.lineWidth = size * .12; g.beginPath(); g.arc(cx, cy, radius * 1.13, 0, Math.PI * 2); g.stroke(); }
       g.font = `${size * .86}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(a.emoji, cx, cy + size * .03);
     });
+  }
+  // 사건 발생 지점: 짧은 충격파와 파티클. 위치는 공개 사건으로 받은 칸만 사용한다.
+  const effectColor: Record<MomentKind, string> = {
+    trap: '#ff574d', clear: '#9aff72', danger: '#ff473d', hidden: '#ffe26a', oasis: '#65f5e2', zone: '#ffcc69', bonus: '#c4a5ff'
+  };
+  for (const effect of m.effects ?? []) for (const cell of [effect.cell, effect.targetCell]) {
+    if (cell === undefined || !visible(cell)) continue;
+    const age = Math.max(0, t - effect.startedAt);
+    if (age >= effect.durationMs) continue;
+    const [x, y] = xy(cell), cx = x + cs / 2, cy = y + cs / 2;
+    const progress = reduce ? .36 : age / effect.durationMs;
+    const fade = reduce ? .9 : Math.min(1, age / 180) * Math.min(1, (1 - progress) * 2.6);
+    const color = effectColor[effect.kind];
+    g.save();
+    g.globalAlpha = fade;
+    g.shadowColor = color; g.shadowBlur = cs * .55;
+    g.strokeStyle = color; g.lineWidth = Math.max(3, cs * .09);
+    for (const shift of [0, .27]) {
+      const p = (progress + shift) % 1;
+      g.globalAlpha = fade * (1 - p * .72);
+      g.beginPath(); g.arc(cx, cy, cs * (.44 + p * 1.5), 0, Math.PI * 2); g.stroke();
+    }
+    g.globalAlpha = fade;
+    g.fillStyle = color;
+    for (let i = 0; i < 8; i++) {
+      const angle = i * Math.PI / 4 + .18;
+      const radius = cs * (.62 + progress * .92);
+      const px = cx + Math.cos(angle) * radius, py = cy + Math.sin(angle) * radius;
+      g.beginPath(); g.arc(px, py, Math.max(1.5, cs * (.055 + (1 - progress) * .04)), 0, Math.PI * 2); g.fill();
+    }
+    g.shadowBlur = cs * .25;
+    g.fillStyle = '#173128'; g.beginPath(); g.arc(cx, cy - cs * .6, cs * .36, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = TEAM_COLORS[effect.team] ?? color; g.lineWidth = Math.max(2, cs * .07); g.stroke();
+    g.font = `${cs * .43}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = '#fff'; g.fillText(effect.icon, cx, cy - cs * .6);
+    g.restore();
   }
   // 센서 숫자 (내 위치 위)
   if (m.sensor && visible(m.sensor.cell)) {
